@@ -4,8 +4,8 @@
   --border: #e8e9f1;
   --text: #15161c;
   --muted: #6b6f80;
-  --accent: #6c4cf5;
-  --accent-soft: #efebff;
+  --accent: #2563eb;
+  --accent-soft: #e8f0fe;
   --success: #1f9d55;
   --success-soft: #e6f6ec;
   --danger: #e5484d;
@@ -57,13 +57,13 @@ h1 { font-size: 38px; font-weight: 700; letter-spacing: -0.5px; }
 .icon-btn.big { width: 54px; height: 54px; background: var(--card); border: 1px solid var(--border); box-shadow: 0 1px 2px rgba(20,20,40,.04); }
 .icon-btn.ghost { background: transparent; width: 36px; }
 .icon-btn.accent { background: var(--accent-soft); color: var(--accent); }
-.icon-btn.accent:hover { background: #e2dbff; }
+.icon-btn.accent:hover { background: #d5e3fd; }
 .icon-btn.danger { background: var(--danger-soft); color: var(--danger); }
 
 .card { background: var(--card); border: 1px solid var(--border); border-radius: 18px; padding: 22px 24px; box-shadow: 0 1px 3px rgba(20,20,40,.04); }
 .card-label { display: block; font-size: 18px; font-weight: 500; margin-bottom: 12px; }
 textarea {
-  width: 100%; min-height: 118px; resize: vertical; border: 1.5px solid #d9d2fb; border-radius: 12px;
+  width: 100%; min-height: 118px; resize: vertical; border: 1.5px solid #c7d7fb; border-radius: 12px;
   padding: 14px 22px; font: inherit; font-size: 17px; line-height: 1.8; color: var(--text); outline: none; text-align: left;
 }
 textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
@@ -79,7 +79,7 @@ textarea::placeholder { color: #9a9db0; text-align: right; }
 .btn-primary {
   display: inline-flex; align-items: center; gap: 10px; background: var(--accent); color: #fff;
   padding: 15px 30px; border-radius: 12px; font-size: 19px; font-weight: 600; transition: filter .15s, transform .1s;
-  box-shadow: 0 6px 16px rgba(108,76,245,.28);
+  box-shadow: 0 6px 16px rgba(37,99,235,.28);
 }
 .btn-primary:hover { filter: brightness(1.07); }
 .btn-primary:active { transform: scale(.98); }
@@ -110,7 +110,7 @@ h2 { font-size: 22px; font-weight: 600; display: flex; align-items: center; gap:
 .progress-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; font-size: 14px; flex-direction: row-reverse; }
 .pct { color: var(--accent); font-weight: 600; font-size: 18px; }
 .progress { height: 6px; background: #ececf3; border-radius: 99px; overflow: hidden; direction: ltr; }
-.progress div { height: 100%; background: linear-gradient(90deg, #8b6cff, var(--accent)); border-radius: 99px; transition: width .3s; }
+.progress div { height: 100%; background: linear-gradient(90deg, #4f86f7, var(--accent)); border-radius: 99px; transition: width .3s; }
 
 .pill { display: inline-flex; align-items: center; gap: 6px; padding: 7px 16px; border-radius: 999px; background: #f0f0f5; color: #4a4d5c; font-size: 15px; }
 .pill-success { background: var(--success-soft); color: var(--success); }
@@ -126,13 +126,13 @@ h2 { font-size: 22px; font-weight: 600; display: flex; align-items: center; gap:
 .action-bar > .btn-primary { background: var(--accent); }
 .segmented { display: flex; gap: 4px; padding: 5px; border: 1px solid var(--border); border-radius: 14px; }
 .segmented button { display: inline-flex; align-items: center; gap: 8px; padding: 11px 30px; border-radius: 10px; font-size: 17px; color: #3b3e4c; }
-.segmented button.on { background: var(--accent-soft); color: var(--accent); border: 1.5px solid #b9a9ff; font-weight: 500; }
+.segmented button.on { background: var(--accent-soft); color: var(--accent); border: 1.5px solid #93b4f7; font-weight: 500; }
 .select { display: flex; align-items: center; gap: 12px; border: 1px solid var(--border); border-radius: 12px; padding: 14px 20px; font-size: 17px; }
 .select span { flex: 1; text-align: right; }
 .select select { flex: 1; border: none; background: transparent; font: inherit; color: inherit; outline: none; appearance: none; cursor: pointer; }
 .select:has(select:disabled) { opacity: .5; }
 
-.thumb { background: linear-gradient(135deg, #6c4cf5, #2a1d6b); }
+.thumb { background: linear-gradient(135deg, #2563eb, #2a1d6b); }
 .thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .thumb .play, .thumb .duration { z-index: 1; }
 .spin { animation: spin 1s linear infinite; }
@@ -174,7 +174,7 @@ h2 { font-size: 22px; font-weight: 600; display: flex; align-items: center; gap:
 .update-link:hover:not(:disabled) { background: var(--accent-soft); }
 .update-link:disabled, .btn-ghost:disabled { opacity: .5; cursor: not-allowed; }
 
-.update-banner { display: flex; align-items: center; gap: 14px; padding: 12px 18px; margin: 12px 0 0; border-radius: 14px; background: var(--accent-soft); color: #3d2a9e; border: 1px solid #d9d0ff; font-size: 15px; }
+.update-banner { display: flex; align-items: center; gap: 14px; padding: 12px 18px; margin: 12px 0 0; border-radius: 14px; background: var(--accent-soft); color: #1e3a8a; border: 1px solid #c7d7fb; font-size: 15px; }
 .update-banner > svg { color: var(--accent); flex-shrink: 0; }
 .update-text { flex: 1; }
 .update-progress { margin-top: 8px; max-width: 360px; }
@@ -257,10 +257,10 @@ h2 { font-size: 22px; font-weight: 600; display: flex; align-items: center; gap:
 /* Drop zone: big when empty, a slim bar once files are in. */
 .drop-zone {
   flex-shrink: 0; display: flex; align-items: center; justify-content: center; gap: 14px; width: 100%;
-  border: 1.5px dashed #c9bdfb; background: #fbfaff; border-radius: 16px; padding: 26px; color: var(--accent);
+  border: 1.5px dashed #b6cbf7; background: #f7faff; border-radius: 16px; padding: 26px; color: var(--accent);
   text-align: right; transition: background .15s, border-color .15s;
 }
-.drop-zone:hover { background: #f5f2ff; }
+.drop-zone:hover { background: #eef4ff; }
 .drop-zone.dragging { background: var(--accent-soft); border-color: var(--accent); border-style: solid; }
 .drop-zone.compact { padding: 12px 18px; }
 .drop-title { font-size: 16px; font-weight: 600; color: var(--text); }
@@ -271,8 +271,8 @@ h2 { font-size: 22px; font-weight: 600; display: flex; align-items: center; gap:
 .group-bar { flex-shrink: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 12px; font-size: 14px; }
 .group-chip { display: inline-flex; align-items: center; gap: 6px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 5px 6px 5px 12px; }
 .group-chip select, .target-select {
-  font: inherit; font-size: 13px; font-weight: 600; color: var(--accent); background: #fbfaff;
-  border: 1px solid #d9d2fb; border-radius: 8px; padding: 5px 8px; cursor: pointer;
+  font: inherit; font-size: 13px; font-weight: 600; color: var(--accent); background: #f7faff;
+  border: 1px solid #c7d7fb; border-radius: 8px; padding: 5px 8px; cursor: pointer;
 }
 .group-chip select:focus, .target-select:focus { outline: 2px solid var(--accent-soft); }
 .target-select:disabled { opacity: .6; cursor: default; }
@@ -289,7 +289,7 @@ h2 { font-size: 22px; font-weight: 600; display: flex; align-items: center; gap:
 }
 .file-row.unsupported { background: #fffafa; border-color: #f6d8d8; }
 .kind-icon { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; }
-.t-vid { background: #efebff; color: #6c4cf5; }
+.t-vid { background: #e8f0fe; color: #2563eb; }
 .t-aud { background: #e8f1fd; color: #2563c9; }
 .t-img { background: #e1f5ee; color: #0f6e56; }
 .t-doc { background: #fdecec; color: #c0392b; }
@@ -350,3 +350,6 @@ svg.t-vid, svg.t-aud, svg.t-img, svg.t-doc, svg.t-sheet, svg.t-book, svg.t-zip {
 .action-bar > .save-where { background: transparent; }
 
 .tool-card .unit-row select.plain-select { min-width: 120px; }
+
+/* Blue accent for Morph (Grab is purple). Video keeps a violet icon so it stays distinct from audio. */
+.t-vid { background: #f1ebfe; color: #7c3aed; }
