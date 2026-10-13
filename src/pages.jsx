@@ -3,6 +3,7 @@ import {
   ArrowLeftRight, Trash2, FolderOpen, ExternalLink, History as HistoryIcon, RefreshCw, Check, X, Clock, Search,
 } from 'lucide-react';
 import GlassSelect from './glass-select.jsx';
+import { GlassDate, GlassTime } from './glass-pickers.jsx';
 import { fmtLabel } from './App.jsx';
 
 const api = window.morph;
@@ -297,8 +298,8 @@ function WorldClock() {
         <GlassSelect className="plain-select" value={base} onChange={(e) => setBase(e.target.value)}>
           {CITIES.map(([n, tz]) => <option key={tz} value={tz}>{n}</option>)}
         </GlassSelect>
-        <input className="unit-input small" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-        <input className="unit-input small" type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+        <GlassDate className="unit-input small" value={date} onChange={(e) => setDate(e.target.value)} />
+        <GlassTime className="unit-input small" value={time} onChange={(e) => setTime(e.target.value)} />
         <button className="btn-ghost" onClick={() => { const n = nowIn(base); setDate(n.date); setTime(n.time); }}><Clock size={15} /> עכשיו</button>
       </div>
       <div className="clock-list">
