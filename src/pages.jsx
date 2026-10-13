@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeftRight, Trash2, FolderOpen, ExternalLink, History as HistoryIcon, RefreshCw, Check, X, Clock, Search,
 } from 'lucide-react';
+import GlassSelect from './glass-select.jsx';
 import { fmtLabel } from './App.jsx';
 
 const api = window.morph;
@@ -140,12 +141,12 @@ export function SettingsPage({ settings, onChange, tools, app }) {
             <div className="setting-title">רזולוציית וידאו מקסימלית</div>
             <div className="row-meta">סרטון גדול יותר יוקטן. סרטון קטן יותר לא יוגדל.</div>
           </div>
-          <select className="plain-select" value={settings.maxHeight || ''} onChange={(e) => onChange({ maxHeight: e.target.value ? Number(e.target.value) : null })}>
+          <GlassSelect className="plain-select" value={settings.maxHeight || ''} onChange={(e) => onChange({ maxHeight: e.target.value ? Number(e.target.value) : null })}>
             <option value="">מקורית</option>
             <option value="1080">1080p</option>
             <option value="720">720p</option>
             <option value="480">480p</option>
-          </select>
+          </GlassSelect>
         </div>
         <div className="setting">
           <div>
@@ -229,13 +230,13 @@ function UnitConverter() {
       </div>
       <div className="unit-row">
         <input className="unit-input" inputMode="decimal" value={value} onChange={(e) => setValue(e.target.value)} dir="ltr" />
-        <select className="plain-select" value={from} onChange={(e) => setFrom(e.target.value)}>
+        <GlassSelect className="plain-select" value={from} onChange={(e) => setFrom(e.target.value)}>
           {unitKeys.map((k) => <option key={k} value={k}>{UNITS[cat].units[k][0]}</option>)}
-        </select>
+        </GlassSelect>
         <button className="icon-btn" title="החלף כיוון" onClick={() => { setFrom(to); setTo(from); }}><ArrowLeftRight size={17} /></button>
-        <select className="plain-select" value={to} onChange={(e) => setTo(e.target.value)}>
+        <GlassSelect className="plain-select" value={to} onChange={(e) => setTo(e.target.value)}>
           {unitKeys.map((k) => <option key={k} value={k}>{UNITS[cat].units[k][0]}</option>)}
-        </select>
+        </GlassSelect>
       </div>
       <div className="unit-result">
         <span dir="ltr">{fmtNum(result)}</span> <span className="muted">{UNITS[cat].units[to][0]}</span>
@@ -293,9 +294,9 @@ function WorldClock() {
     <section className="card tool-card">
       <h2>שעון עולמי</h2>
       <div className="unit-row">
-        <select className="plain-select" value={base} onChange={(e) => setBase(e.target.value)}>
+        <GlassSelect className="plain-select" value={base} onChange={(e) => setBase(e.target.value)}>
           {CITIES.map(([n, tz]) => <option key={tz} value={tz}>{n}</option>)}
-        </select>
+        </GlassSelect>
         <input className="unit-input small" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         <input className="unit-input small" type="time" value={time} onChange={(e) => setTime(e.target.value)} />
         <button className="btn-ghost" onClick={() => { const n = nowIn(base); setDate(n.date); setTime(n.time); }}><Clock size={15} /> עכשיו</button>

@@ -354,3 +354,9 @@ svg.t-vid, svg.t-aud, svg.t-img, svg.t-doc, svg.t-sheet, svg.t-book, svg.t-zip {
 /* Blue accent for Morph (Grab is purple). Video keeps a violet icon so it stays distinct from audio. */
 .t-vid { background: #f1ebfe; color: #7c3aed; }
 
+/* the per-kind chips' menus look like the per-file ones */
+.group-chip .gselect {
+  font-size: 13px; font-weight: 600; color: var(--accent); background: #f7faff;
+  border: 1px solid #c7d7fb; border-radius: 8px; padding: 5px 8px;
+}
+.tool-card .unit-row .gselect.plain-select { min-width: 120px; }

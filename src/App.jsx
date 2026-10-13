@@ -4,6 +4,7 @@ import {
   FileText, FileSpreadsheet, Presentation, BookOpen, Archive, Shapes, Clapperboard, X, FolderOpen,
   Square, RotateCw, Check, AlertTriangle, Loader2, Sparkles, Download, RefreshCw, ExternalLink, ArrowUp,
 } from 'lucide-react';
+import GlassSelect from './glass-select.jsx';
 // The Morph name with its symbol on the right (vector, from the brand package).
 import brandLockup from './assets/brand/logo-lockup.svg';
 
@@ -130,7 +131,7 @@ function FileRow({ item, actions }) {
 
       <div className="row-actions">
         {!unsupported && (
-          <select
+          <GlassSelect
             className="target-select"
             value={item.target}
             disabled={busy || item.status === 'queued'}
@@ -138,7 +139,7 @@ function FileRow({ item, actions }) {
             aria-label="פורמט יעד"
           >
             {item.targets.map((t) => <option key={t} value={t}>{fmtLabel(t)}</option>)}
-          </select>
+          </GlassSelect>
         )}
         {item.status === 'done' && (
           <>
@@ -344,10 +345,10 @@ export default function App() {
                   <label key={g.kind} className="group-chip">
                     <Icon size={15} className={KIND_STYLE[g.kind]?.cls} />
                     {KIND_STYLE[g.kind]?.group} ({g.count}) ל־
-                    <select value={g.current || ''} onChange={(e) => setGroupTarget(g.kind, e.target.value)}>
+                    <GlassSelect value={g.current || ''} onChange={(e) => setGroupTarget(g.kind, e.target.value)}>
                       {!g.current && <option value="">שונים</option>}
                       {g.targets.map((t) => <option key={t} value={t}>{fmtLabel(t)}</option>)}
-                    </select>
+                    </GlassSelect>
                   </label>
                 );
               })}
