@@ -125,6 +125,16 @@ function createWindow() {
   else win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
 }
 
+// One Morph at a time: opening it again brings the open window to the front instead.
+const focusMain = () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+};
+if (!app.requestSingleInstanceLock()) app.exit(0);
+app.on('second-instance', focusMain);
+
 app.whenReady().then(() => {
   setProfileDir(path.join(app.getPath('userData'), 'loprofile')); // must stay short: see convert.cjs
   createWindow();
