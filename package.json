@@ -1,6 +1,6 @@
 {
   "name": "morph",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Morph - file converter",
   "author": "Or meir Tzarfati",
   "main": "electron/main.cjs",
