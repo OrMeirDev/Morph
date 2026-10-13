@@ -4,7 +4,15 @@ import {
   FileText, FileSpreadsheet, Presentation, BookOpen, Archive, Shapes, Clapperboard, X, FolderOpen,
   Square, RotateCw, Check, AlertTriangle, Loader2, Sparkles, Download, RefreshCw, ExternalLink,
 } from 'lucide-react';
+import logo1x from './assets/logo-1x.png';
+import logo125 from './assets/logo-1_25x.png';
+import logo15 from './assets/logo-1_5x.png';
+import logo2x from './assets/logo-2x.png';
+
 import { HistoryPage, SettingsPage, UnitsPage } from './pages.jsx';
+
+// The app icon beside the name, drawn at its exact size for each display scale so it stays sharp.
+const LOGO_SET = `${logo1x} 1x, ${logo125} 1.25x, ${logo15} 1.5x, ${logo2x} 2x`;
 
 const api = window.morph;
 
@@ -77,7 +85,7 @@ function Sidebar({ page, onNavigate, tools, appVersion }) {
     <aside className="sidebar">
       <div className="brand">
         <span>Morph</span>
-        <ArrowLeftRight size={28} strokeWidth={2.4} className="brand-icon" />
+        <img className="brand-logo" src={logo1x} srcSet={LOGO_SET} width={40} height={40} alt="" draggable={false} />
       </div>
       <nav>
         {PAGES.map(({ id, icon: Icon, label }) => (
