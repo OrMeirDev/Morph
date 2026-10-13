@@ -1,6 +1,6 @@
 {
   "name": "morph",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Morph - file converter",
   "author": "Or meir Tzarfati",
   "main": "electron/main.cjs",
@@ -37,12 +37,45 @@
   "build": {
     "appId": "com.morph.converter",
     "productName": "Morph",
-    "directories": { "output": "release", "buildResources": "build" },
-    "files": ["dist/**", "electron/**", "package.json"],
-    "asarUnpack": ["**/node_modules/sharp/**", "**/node_modules/@img/**"],
-    "extraResources": [{ "from": "bin", "to": "bin" }, "THIRD_PARTY_NOTICES.md"],
-    "publish": [{ "provider": "github", "owner": "OrMeirDev", "repo": "Morph", "releaseType": "release" }],
-    "win": { "target": [{ "target": "nsis", "arch": ["x64"] }], "icon": "build/icon.png" },
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**",
+      "electron/**",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "**/node_modules/sharp/**",
+      "**/node_modules/@img/**"
+    ],
+    "extraResources": [
+      {
+        "from": "bin",
+        "to": "bin"
+      },
+      "THIRD_PARTY_NOTICES.md"
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "OrMeirDev",
+        "repo": "Morph",
+        "releaseType": "release"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png"
+    },
     "nsis": {
       "oneClick": false,
       "perMachine": false,
@@ -50,7 +83,9 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Morph",
-      "installerLanguages": ["he_IL"],
+      "installerLanguages": [
+        "he_IL"
+      ],
       "language": "1037",
       "artifactName": "Morph-Setup-${version}.${ext}"
     }
