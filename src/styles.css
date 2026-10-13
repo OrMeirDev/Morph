@@ -354,6 +354,3 @@ svg.t-vid, svg.t-aud, svg.t-img, svg.t-doc, svg.t-sheet, svg.t-book, svg.t-zip {
 /* Blue accent for Morph (Grab is purple). Video keeps a violet icon so it stays distinct from audio. */
 .t-vid { background: #f1ebfe; color: #7c3aed; }
 
-/* The app icon beside the name: exact-size images (no resampling blur) with a soft glow in the
-   app's color, so the glass icon lifts off the sidebar. */
-.brand-logo { display: block; flex-shrink: 0; filter: drop-shadow(0 3px 8px color-mix(in srgb, var(--accent) 35%, transparent)); user-select: none; -webkit-user-drag: none; }

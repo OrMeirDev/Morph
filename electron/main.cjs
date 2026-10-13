@@ -104,7 +104,7 @@ function createWindow() {
     minHeight: Math.min(660, area.height),
     center: true,
     title: 'Morph',
-    backgroundColor: '#f6f7fb',
+    backgroundColor: '#f4f8fe',
     autoHideMenuBar: true,
     webPreferences: {
       contextIsolation: true,

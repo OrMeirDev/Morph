@@ -2,17 +2,12 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowLeftRight, Ruler, History, Settings, Home, ChevronLeft, UploadCloud, Film, Music, Image as ImageIcon,
   FileText, FileSpreadsheet, Presentation, BookOpen, Archive, Shapes, Clapperboard, X, FolderOpen,
-  Square, RotateCw, Check, AlertTriangle, Loader2, Sparkles, Download, RefreshCw, ExternalLink,
+  Square, RotateCw, Check, AlertTriangle, Loader2, Sparkles, Download, RefreshCw, ExternalLink, ArrowUp,
 } from 'lucide-react';
-import logo1x from './assets/logo-1x.png';
-import logo125 from './assets/logo-1_25x.png';
-import logo15 from './assets/logo-1_5x.png';
-import logo2x from './assets/logo-2x.png';
+// The Morph name with its symbol on the right (vector, from the brand package).
+import brandLockup from './assets/brand/logo-lockup.svg';
 
 import { HistoryPage, SettingsPage, UnitsPage } from './pages.jsx';
-
-// The app icon beside the name, drawn at its exact size for each display scale so it stays sharp.
-const LOGO_SET = `${logo1x} 1x, ${logo125} 1.25x, ${logo15} 1.5x, ${logo2x} 2x`;
 
 const api = window.morph;
 
@@ -83,10 +78,7 @@ function Sidebar({ page, onNavigate, tools, appVersion }) {
   const missing = tools ? Object.entries(tools).filter(([, ok]) => !ok).length : 0;
   return (
     <aside className="sidebar">
-      <div className="brand">
-        <span>Morph</span>
-        <img className="brand-logo" src={logo1x} srcSet={LOGO_SET} width={40} height={40} alt="" draggable={false} />
-      </div>
+      <div className="brand"><img className="brand-lockup" src={brandLockup} alt="Morph" draggable={false} /></div>
       <nav>
         {PAGES.map(({ id, icon: Icon, label }) => (
           <button key={id} className={`nav-item ${page === id ? 'active' : ''}`} onClick={() => onNavigate(id)}>
@@ -322,13 +314,26 @@ export default function App() {
             </div>
           </header>
 
-          <button className={`drop-zone ${dragging ? 'dragging' : ''} ${items.length ? 'compact' : ''}`} onClick={async () => addPaths(await api.pickFiles())}>
-            <UploadCloud size={items.length ? 22 : 34} />
-            <div>
-              <div className="drop-title">{dragging ? 'שחרר כדי להוסיף' : <>גרור לכאן קבצים מכל סוג, או <u>בחר מהמחשב</u></>}</div>
-              <div className="drop-sub">וידאו, אודיו, תמונות, PDF, Word, Excel, מצגות, ספרים דיגיטליים, ארכיונים</div>
-            </div>
-          </button>
+          {/* Nothing added yet: the big drop area with a "choose" button; afterwards a slim bar. */}
+          {items.length ? (
+            <button className={`drop-zone compact ${dragging ? 'dragging' : ''}`} onClick={async () => addPaths(await api.pickFiles())}>
+              <UploadCloud size={22} />
+              <div>
+                <div className="drop-title">{dragging ? 'שחרר כדי להוסיף' : <>גרור לכאן קבצים מכל סוג, או <u>בחר מהמחשב</u></>}</div>
+                <div className="drop-sub">וידאו, אודיו, תמונות, PDF, Word, Excel, מצגות, ספרים דיגיטליים, ארכיונים</div>
+              </div>
+            </button>
+          ) : (
+            <button className={`drop-zone hero ${dragging ? 'dragging' : ''}`} onClick={async () => addPaths(await api.pickFiles())}>
+              <div className="drop-inner">
+                <span className="drop-art" aria-hidden="true"><i /><i /><i><ArrowUp size={28} strokeWidth={2.6} /></i></span>
+                <div className="drop-title">{dragging ? 'שחרר כדי להוסיף' : 'גרור לכאן קבצים מכל סוג'}</div>
+                <div className="drop-or">או</div>
+                <span className="btn-primary drop-pick"><FolderOpen size={19} /> בחר מהמחשב</span>
+                <div className="drop-kinds">{['וידאו', 'אודיו', 'תמונות', 'PDF', 'Word', 'Excel', 'מצגות', 'ספרים דיגיטליים', 'ארכיונים'].map((k) => <span key={k}>{k}</span>)}</div>
+              </div>
+            </button>
+          )}
 
           {groups.length > 1 && (
             <div className="group-bar">
