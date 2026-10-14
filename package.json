@@ -5,10 +5,14 @@
   "author": "Or meir Tzarfati",
   "main": "electron/main.cjs",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "concurrently -k \"vite\" \"wait-on tcp:5174 && cross-env VITE_DEV=1 electron .\"",
     "build": "vite build",
     "start": "electron .",
+    "test": "node --test --test-reporter=spec \"test/**/*.test.mjs\" \"test/**/*.test.cjs\"",
+    "check:imports": "node scripts/check-imports.cjs",
+    "check": "npm run check:imports && npm test && npm run build",
     "dist": "vite build && electron-builder --win nsis --x64",
     "release": "vite build && electron-builder --win nsis --x64 --publish always",
     "fetch-bin": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/fetch-bin.ps1",
@@ -92,5 +96,8 @@
       "language": "1037",
       "artifactName": "Morph-Setup-${version}.${ext}"
     }
+  },
+  "engines": {
+    "node": ">=22"
   }
 }
