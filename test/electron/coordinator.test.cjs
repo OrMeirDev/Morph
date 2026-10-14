@@ -13,7 +13,7 @@ const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3
 const WEBP = Buffer.concat([Buffer.from('RIFF'), Buffer.alloc(4), Buffer.from('WEBPVP8 ')]);
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
-function setup({ adapter, settings = {} } = {}) {
+function setup({ adapter, settings = {}, onLeftover = null } = {}) {
   const dir = tmpDir('coord');
   const input = path.join(dir, 'photo.png');
   fs.writeFileSync(input, PNG);
@@ -38,6 +38,10 @@ function setup({ adapter, settings = {} } = {}) {
   const updates = [];
   const historyAdds = [];
   const journal = new JobRepository(dir);
+  if (onLeftover) {
+    const add = journal.addLeftover.bind(journal);
+    journal.addLeftover = (jobId, p) => { add(jobId, p); onLeftover(p); };
+  }
   const c = new ConversionCoordinator({
     intake,
     tools: { has: () => true, path: () => '/bin/true' },
@@ -147,6 +151,22 @@ test('cancel immediately before publication: the artifact is discarded', async (
   assert.equal(finalState(t.updates, id), 'cancelled');
   assert.deepEqual(t.outputs(), []);
   assert.equal(t.historyAdds.length, 0);
+});
+
+test('Stop during publication, after the name is reserved but before the final rename: cancelled, nothing written', async () => {
+  let t = null;
+  t = setup({
+    adapter: { run: writeWebp },
+    // The publisher journals the reserved final name just before renaming into it: press Stop there.
+    onLeftover: (p) => { if (!path.basename(p).startsWith('.~morph-')) t.c.cancel([...t.c.byFile.keys()][0]); },
+  });
+  const id = t.addFile();
+  t.c.enqueue({ fileId: id, target: 'webp' });
+  await t.c.whenIdle();
+  assert.equal(finalState(t.updates, id), 'cancelled');
+  assert.deepEqual(t.outputs(), [], 'no output, no empty reservation, no staging file');
+  assert.equal(t.historyAdds.length, 0);
+  assert.deepEqual(t.journal.all(), {});
 });
 
 test('an adapter that honours the signal ends cancelled, and a staged file is removed', async () => {

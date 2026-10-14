@@ -77,3 +77,24 @@ test('recovery removes staging files and empty reservations but keeps real outpu
   await discardLeftovers([staged, empty, real, path.join(dir, 'gone')]);
   assert.deepEqual(fs.readdirSync(dir), ['real.png']);
 });
+
+// Stop arriving after the first cancel check, while the name is being reserved: the publish must
+// still not happen. isCancelled() answers false once (the post-staging check), then true.
+const lateCancel = () => { let calls = 0; return () => ++calls > 1; };
+
+test('a cancel that lands during reservation, before the final rename, publishes nothing (file)', async () => {
+  const work = tmpDir('w');
+  const out = tmpDir('o');
+  await assert.rejects(publish({ source: src(work, 'a', 'A'), outDir: out, base: 'late', ext: 'png', jobId: 'jl', isCancelled: lateCancel() }), (e) => e.code === 'cancelled');
+  assert.deepEqual(fs.readdirSync(out), [], 'no output, no empty reservation, no staging file');
+});
+
+test('a cancel that lands during reservation, before the final rename, publishes nothing (page folder)', async () => {
+  const work = tmpDir('w');
+  const out = tmpDir('o');
+  const pages = path.join(work, 'pages');
+  fs.mkdirSync(pages);
+  fs.writeFileSync(path.join(pages, '1.png'), 'p1');
+  await assert.rejects(publish({ source: pages, isDir: true, outDir: out, base: 'doc', jobId: 'jld', isCancelled: lateCancel() }), (e) => e.code === 'cancelled');
+  assert.deepEqual(fs.readdirSync(out), []);
+});

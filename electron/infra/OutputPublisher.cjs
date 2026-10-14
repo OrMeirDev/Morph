@@ -24,9 +24,13 @@ function* candidates(outDir, base, ext) {
   for (let i = 1; i < 10000; i++) yield path.join(outDir, `${base} (${i})${suffix}`);
 }
 
-// Windows briefly locks fresh files (antivirus, indexer): retry the rename a few times.
-async function renameWithRetry(from, to) {
+// The commit point: the rename that makes the output appear. A cancel is honoured up to the moment
+// it starts (checked before every attempt, so a Stop that lands while the name is being reserved
+// or during a retry still wins); once the rename has happened, the output exists and the job is
+// complete. Windows briefly locks fresh files (antivirus, indexer), hence the retries.
+async function commitRename(from, to, isCancelled) {
   for (let i = 0; ; i++) {
+    if (isCancelled()) throw new CancelledError();
     try { return await fsp.rename(from, to); } catch (e) {
       if (i >= 5 || !['EBUSY', 'EPERM', 'EACCES'].includes(e.code)) throw e;
       await new Promise((r) => setTimeout(r, 100 * (i + 1)));
@@ -53,7 +57,8 @@ async function stageInto(source, staged, isDir) {
  * @param {string} o.base file name without extension
  * @param {string} [o.ext] target extension ('tar.gz' allowed); omitted for folders
  * @param {string} o.jobId
- * @param {() => boolean} o.isCancelled checked after staging, right before the final rename
+ * @param {() => boolean} o.isCancelled checked after staging and again immediately before every
+ *   attempt of the final rename
  * @param {(p: string) => void} [o.onReserve] journals paths that a crash could leave behind
  * @returns {Promise<string>} the published path
  */
@@ -71,7 +76,7 @@ async function publish({ source, isDir = false, outDir, base, ext, jobId, isCanc
       try {
         if (isDir) {
           try {
-            await renameWithRetry(staged, candidate);
+            await commitRename(staged, candidate, isCancelled);
           } catch (e) {
             if (['EEXIST', 'ENOTEMPTY'].includes(e.code)) continue; // someone else took the name
             throw e;
@@ -88,9 +93,9 @@ async function publish({ source, isDir = false, outDir, base, ext, jobId, isCanc
         await fd.close();
         onReserve(candidate);
         try {
-          await renameWithRetry(staged, candidate); // replaces only our own empty reservation
+          await commitRename(staged, candidate, isCancelled); // replaces only our own empty reservation
         } catch (e) {
-          await fsp.rm(candidate, { force: true }).catch(() => {});
+          await fsp.rm(candidate, { force: true }).catch(() => {}); // release our empty reservation
           throw e;
         }
         return candidate;
