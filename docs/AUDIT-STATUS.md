@@ -37,8 +37,8 @@ audited source was unchanged). Branch: `claude/dazzling-johnson-3zccoi`.
 | MOR-05 | **Fixed (application level)**; engine FS restriction pending | listing preflight (traversal, absolute, drive, links, encryption, size, ratio, count, depth, free space), post-extraction tree check, cleanup on cancel | `archivePolicy.test`, `engines.test` hostile zips; Windows 7z.exe run pending |
 | MOR-06 | **Fixed** | same-disk staging, signature validation, exclusive reservation + rename, journal-based recovery | `outputPublisher.test`, `coordinator.test`; FAT32/network share pending |
 | MOR-07 | **Fixed** for runtime; build-time exception recorded | Electron 44.5.1, sharp 0.35.5, file-type 21.3.4, electron-builder 26.17, Vite 7.3.6 | `npm audit --omit=dev` = 0; `docs/DEPENDENCIES.md` |
-| MOR-08 | **Partly fixed** | 157 tests, real-engine matrix, e2e flow, CI on Linux + Windows | CI has not run yet (needs a PR or manual dispatch); branch protection is an owner setting |
-| MOR-09 | **Fixed**; Windows tree kill to be confirmed | `ProcessRunner` deadlines, bounded logs, spawn errors, tree kill; update/quit wait for cancelled jobs | `processRunner.test` (descendant killed, POSIX here; runs on Windows CI) |
+| MOR-08 | **Fixed** except the owner setting | 157 tests, real-engine matrix, e2e flow, CI on Linux + Windows | CI green on both jobs for PR #1 (run 38600499949); making the checks required on `main` is an owner setting |
+| MOR-09 | **Fixed**; real-engine trees on Windows pending | `ProcessRunner` deadlines, bounded logs, spawn errors, tree kill; update/quit wait for cancelled jobs | `processRunner.test` descendant killed, passing on Linux and on the GitHub Windows runner (taskkill /T); LibreOffice/Calibre trees on Windows: W1 |
 | MOR-10 | **Partly fixed** | `bin-manifest.json` record/verify gates `dist`/`release`; version pins and `-RequirePinned` | pins must be chosen from a tested Windows build; signing not configured |
 | MOR-11 | **Fixed**; Windows long-path check pending | `OfficeProfileManager`: per-build profile, lock, ready marker, one rebuild | Office tests in `engines.test` |
 | MOR-12 | **Fixed** | `ToolRegistry` probes versions/encoders/sharp/heic; targets from capabilities; missing engine named in the row | `capabilities.test`, `engines.test` (Calibre absent → not offered) |
@@ -54,7 +54,7 @@ audited source was unchanged). Branch: `claude/dazzling-johnson-3zccoi`.
 | ID | Item | Status | Blocked by | Blocks | Lane / size |
 | --- | --- | --- | --- | --- | --- |
 | W1 | Run the Windows checks in `docs/TESTING.md` (bundled engines, tree kill, profile, NTFS/FAT/share, packaged app, update from 1.0.3) | Ready | a Windows machine with `fetch-bin` | E, F | QA / M |
-| W2 | First CI run and required checks on `main` | Ready | owner opens a PR or dispatches the workflow; owner sets the ruleset | merge gating | Release / S |
+| W2 | Require the `CI` checks on `main` (ruleset / branch protection) | Ready | owner (repository settings) | merge gating | Release / S |
 | D2 | Windows Job Object (kill-on-close, memory cap) and restricted token for tool processes and workers | Planned | W1 measurements | stronger MOR-03/05/09 | Native + security / L |
 | E1 | Choose and record pinned engine versions; `bin:record` | Ready | W1 | F1 | Engine / S |
 | E2 | Calibre directions (7 rows "not yet" in `docs/FORMATS.md`) and real-world documents (embedded fonts, images, tracked changes, scanned PDFs) | Planned | Calibre on a test host (CI can `apt install calibre`) | MOR-13 completion | Engine + QA / M |

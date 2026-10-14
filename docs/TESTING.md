@@ -40,6 +40,13 @@ All fixtures are generated at test time (no binary fixtures in git).
 - Screenshots of every page: identical to the 1.0.3 build rendered on the same Electron, except the
   tool count (now from probes) and the settings tool chips.
 
+## GitHub Actions (PR #1, run 38600499949)
+
+- Linux: imports, 157 tests, engine/document matrix with no skips, build, no test hook in the
+  bundle, runtime audit, e2e flow 15/15 in Electron 44 (`--disable-gpu`).
+- Windows (windows-latest, no bundled engines): imports, tests incl. the taskkill descendant test,
+  7-Zip archive policy against `7z.exe`, sharp image matrix and MOR-01 cancel tests; build.
+
 ## Pending on Windows (not executable in this environment)
 
 These need a Windows 10/11 x64 machine with `npm run fetch-bin` payloads; record results in the PR.
