@@ -45,7 +45,7 @@ jobs:
         run: |
           node node_modules/electron/install.js
           VITE_E2E_HOOKS=1 npx vite build
-          xvfb-run -a node_modules/electron/dist/electron --no-sandbox e2e/conversion-flow.cjs
+          xvfb-run -a node_modules/electron/dist/electron --no-sandbox --disable-gpu e2e/conversion-flow.cjs
 
   windows:
     name: Checks (Windows, no bundled engines)

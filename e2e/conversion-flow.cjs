@@ -16,7 +16,13 @@ const work = fs.mkdtempSync(path.join(os.tmpdir(), 'morph-e2e-files-'));
 const checks = [];
 const check = (name, ok, detail = '') => { checks.push({ name, ok: !!ok, detail }); };
 
-app.whenReady().then(async () => {
+app.whenReady().then(() => run().catch((e) => {
+  // Any unexpected error ends the run at once with what passed so far (no silent wait for the timeout).
+  console.log('ERROR', e && e.stack, JSON.stringify(checks, null, 2));
+  app.exit(1);
+}));
+
+async function run() {
   const sharp = require('sharp');
   await sharp({ create: { width: 64, height: 48, channels: 3, background: '#2a7' } }).png().toFile(path.join(work, 'photo.png'));
   await sharp({ create: { width: 3000, height: 3000, channels: 3, background: '#a27' } }).png().toFile(path.join(work, 'huge.png'));
@@ -29,7 +35,13 @@ app.whenReady().then(async () => {
   while (!(win = BrowserWindow.getAllWindows()[0])) await wait(30);
   win.setContentSize(1347, 852);
   const js = (c) => win.webContents.executeJavaScript(c);
-  const shot = async (n) => { await wait(300); fs.writeFileSync(path.join(OUT_DIR, `${n}.png`), (await win.webContents.capturePage()).toPNG()); };
+  // Screenshots are evidence for people, not checks: a capture failure (seen on GPU-less CI runners
+  // as UnknownVizError) is noted and the flow goes on.
+  const shotErrors = [];
+  const shot = async (n) => {
+    await wait(300);
+    try { fs.writeFileSync(path.join(OUT_DIR, `${n}.png`), (await win.webContents.capturePage()).toPNG()); } catch (e) { shotErrors.push(`${n}: ${e.message}`); }
+  };
   const waitFor = async (expr, ms = 30000) => { const t0 = Date.now(); while (!(await js(expr))) { if (Date.now() - t0 > ms) return false; await wait(100); } return true; };
 
   await waitFor(`document.querySelectorAll('.nav-item').length > 0`);
@@ -95,7 +107,7 @@ app.whenReady().then(async () => {
   await shot('6-settings');
 
   const failed = checks.filter((c) => !c.ok);
-  console.log(JSON.stringify({ passed: checks.length - failed.length, failed: failed.length, checks }, null, 2));
+  console.log(JSON.stringify({ passed: checks.length - failed.length, failed: failed.length, checks, screenshotErrors: shotErrors }, null, 2));
   fs.rmSync(work, { recursive: true, force: true });
   app.exit(failed.length ? 1 : 0);
-});
+}
