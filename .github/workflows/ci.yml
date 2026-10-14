@@ -30,12 +30,18 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends ffmpeg poppler-utils p7zip-full \
-            libreoffice-writer libreoffice-calc libreoffice-impress fonts-dejavu-core fonts-noto-core xvfb
+            libreoffice-writer libreoffice-calc libreoffice-impress calibre fonts-dejavu-core fonts-noto-core xvfb
       - run: npm ci --ignore-scripts --no-fund --no-audit
       - run: npm run check:imports
       - run: npm test
+        env:
+          # Calibre's PDF output runs Qt WebEngine (Chromium); Ubuntu 24.04 restricts the
+          # unprivileged user namespaces its sandbox needs. Test environment only.
+          QTWEBENGINE_CHROMIUM_FLAGS: --no-sandbox
       - name: The engine matrix must not have skipped silently
-        run: npm run test:engines 2>&1 | tee engines.log; ! grep -E "# (no 7-Zip|no ffmpeg|no poppler|no LibreOffice)" engines.log
+        env:
+          QTWEBENGINE_CHROMIUM_FLAGS: --no-sandbox
+        run: npm run test:engines 2>&1 | tee engines.log; ! grep -E "# (no 7-Zip|no ffmpeg|no poppler|no LibreOffice|no Calibre)" engines.log
       - run: npm run build
       - name: Production bundle carries no test hook
         run: "! grep -q __morphAdd dist/assets/*.js"

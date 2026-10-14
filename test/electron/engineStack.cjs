@@ -5,6 +5,11 @@ const fs = require('fs');
 const path = require('path');
 const { tmpDir, sevenZip } = require('./helpers.cjs');
 
+// Calibre renders PDF with Qt WebEngine (Chromium), which refuses to start as root unless its
+// sandbox is off. Containers often run tests as root; normal users and Windows are unaffected.
+// Test environment only: the app itself never sets this.
+if (process.getuid?.() === 0 && !process.env.QTWEBENGINE_CHROMIUM_FLAGS) process.env.QTWEBENGINE_CHROMIUM_FLAGS = '--no-sandbox';
+
 const sz = sevenZip();
 if (sz) process.env.MORPH_TOOL_SEVENZIP = sz;
 

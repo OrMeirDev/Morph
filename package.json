@@ -20,7 +20,7 @@
     "e2e:glass-pickers": "vite build && electron e2e/glass-pickers.cjs",
     "e2e:screenshots": "vite build && electron e2e/screenshots.cjs",
     "e2e:flow": "cross-env VITE_E2E_HOOKS=1 vite build && electron e2e/conversion-flow.cjs",
-    "test:engines": "node --test --test-reporter=spec test/electron/engines.test.cjs test/electron/documents.test.cjs",
+    "test:engines": "node --test --test-reporter=spec test/electron/engines.test.cjs test/electron/documents.test.cjs test/electron/ebooks.test.cjs",
     "bin:record": "node scripts/bin-manifest.cjs record",
     "bin:verify": "node scripts/bin-manifest.cjs verify"
   },

@@ -48,3 +48,9 @@ test('an unknown direction has no capability', () => {
   assert.equal(capabilityFor('audio', 'mp3', 'docx'), null);
   assert.equal(capabilityFor('nope', 'x', 'mp3'), null);
 });
+
+test('an AZW3 book is offered MOBI but not AZW3', () => {
+  const t = targetsFor({ kind: 'ebook', ext: 'azw3' }, () => true);
+  assert.ok(t.available.includes('mobi'));
+  assert.ok(!t.available.includes('azw3'));
+});

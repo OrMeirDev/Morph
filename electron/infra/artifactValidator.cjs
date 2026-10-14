@@ -61,6 +61,23 @@ async function head(file) {
   }
 }
 
+// The MOBI header version: record 0 starts at the offset stored at byte 78 of the PalmDB header,
+// and its MOBI header (16 bytes in) holds the format version at +0x14.
+async function mobiVersion(file) {
+  const fd = await fsp.open(file, 'r');
+  try {
+    const at = Buffer.alloc(4);
+    await fd.read(at, 0, 4, 78);
+    const rec0 = at.readUInt32BE(0);
+    const hdr = Buffer.alloc(0x18);
+    const { bytesRead } = await fd.read(hdr, 0, hdr.length, rec0 + 16);
+    if (bytesRead < hdr.length || hdr.toString('latin1', 0, 4) !== 'MOBI') return null;
+    return hdr.readUInt32BE(0x14);
+  } finally {
+    await fd.close();
+  }
+}
+
 async function verifyFile(file, target) {
   let st;
   try { st = await fsp.lstat(file); } catch { throw new InvalidOutputError('missing'); }
@@ -69,6 +86,8 @@ async function verifyFile(file, target) {
   const check = SIGNATURES[target];
   if (!check) throw new InvalidOutputError(`no-check-for:${target}`);
   if (!check(await head(file))) throw new InvalidOutputError(`not-${target}`);
+  // AZW3 is KF8: a Mobipocket container whose MOBI header says version 8 (plain MOBI is 6 or less).
+  if (target === 'azw3' && (await mobiVersion(file)) !== 8) throw new InvalidOutputError('not-azw3-kf8');
   return { size: st.size };
 }
 
@@ -83,4 +102,4 @@ async function verifyDir(dir, target) {
 
 const verifyArtifact = (artifact, target) => (artifact.isDir ? verifyDir(artifact.path, target) : verifyFile(artifact.path, target));
 
-module.exports = { verifyArtifact, verifyFile, InvalidOutputError, SIGNATURES };
+module.exports = { verifyArtifact, verifyFile, mobiVersion, InvalidOutputError, SIGNATURES };

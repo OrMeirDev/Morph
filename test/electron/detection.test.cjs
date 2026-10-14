@@ -68,3 +68,15 @@ test('unknown content with an unknown name is unsupported; folders are refused',
 test('classify keeps tar.gz as an archive', () => {
   assert.equal(classify({ ext: 'tar.gz', sniffed: { ext: 'gz', mime: 'application/gzip' } }).kind, 'archive');
 });
+
+test('AZW3/AZW (Mobipocket family) keep their name: no false "renamed" warning, MOBI still offered', () => {
+  const sniffed = { ext: 'mobi', mime: 'application/x-mobipocket-ebook' };
+  for (const ext of ['azw3', 'azw']) {
+    const c = classify({ ext, sniffed });
+    assert.equal(c.kind, 'ebook');
+    assert.equal(c.ext, ext);
+    assert.equal(c.renamed, null);
+  }
+  // A genuinely different format behind an e-book name is still reported.
+  assert.equal(classify({ ext: 'azw3', sniffed: { ext: 'pdf', mime: 'application/pdf' } }).renamed, 'azw3');
+});

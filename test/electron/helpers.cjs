@@ -172,4 +172,24 @@ function makeRichOdp(file) {
   return makeOdf(file, 'application/vnd.oasis.opendocument.presentation', `<office:presentation>${SLIDES.map(page).join('')}</office:presentation>`);
 }
 
-module.exports = { tmpDir, makeZip, makeGif, makeWav, makePng, makePdf, sevenZip, readZip, zipText, makeRichOdt, makeRichOds, makeRichOdp, DOC, SHEET, SLIDES };
+// The e-book fixture: EPUB 3 with title/author metadata, two chapters with headings, a Hebrew
+// right-to-left paragraph, bold text and a list.
+const BOOK = {
+  title: 'Morph Test Book', author: 'Morph QA', ch1: 'ChapterOneHeading', ch2: 'ChapterTwoHeading',
+  hebrew: 'שלום עולם, זה ספר בדיקה', bold: 'BoldWordMarker', item: 'ListItemMarker', tail: 'LastParagraphMarker',
+};
+function makeRichEpub(file) {
+  const xhtml = (title, body) => `<?xml version="1.0" encoding="utf-8"?><!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="en"><head><title>${title}</title></head><body>${body}</body></html>`;
+  const opf = `<?xml version="1.0" encoding="utf-8"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/">`
+    + `<dc:identifier id="uid">urn:uuid:7f1b2c4e-0d7a-4f39-9a2e-3b8f5e6d1a20</dc:identifier><dc:title>${BOOK.title}</dc:title><dc:creator>${BOOK.author}</dc:creator><dc:language>en</dc:language>`
+    + '<meta property="dcterms:modified">2026-01-01T00:00:00Z</meta></metadata><manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>'
+    + '<item id="c1" href="c1.xhtml" media-type="application/xhtml+xml"/><item id="c2" href="c2.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="c1"/><itemref idref="c2"/></spine></package>';
+  const nav = xhtml('Contents', `<nav epub:type="toc"><ol><li><a href="c1.xhtml">${BOOK.ch1}</a></li><li><a href="c2.xhtml">${BOOK.ch2}</a></li></ol></nav>`);
+  const c1 = xhtml(BOOK.ch1, `<h1>${BOOK.ch1}</h1><p dir="rtl" lang="he">${BOOK.hebrew}</p><p>Plain and <b>${BOOK.bold}</b> text.</p>`);
+  const c2 = xhtml(BOOK.ch2, `<h1>${BOOK.ch2}</h1><ul><li>${BOOK.item}</li><li>Second item</li></ul><p>${BOOK.tail}</p>`);
+  const container = '<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>';
+  return makeZip(file, [{ name: 'mimetype', data: 'application/epub+zip' }, { name: 'META-INF/container.xml', data: container },
+    { name: 'OEBPS/content.opf', data: opf }, { name: 'OEBPS/nav.xhtml', data: nav }, { name: 'OEBPS/c1.xhtml', data: c1 }, { name: 'OEBPS/c2.xhtml', data: c2 }]);
+}
+
+module.exports = { makeRichEpub, BOOK, tmpDir, makeZip, makeGif, makeWav, makePng, makePdf, sevenZip, readZip, zipText, makeRichOdt, makeRichOds, makeRichOdp, DOC, SHEET, SLIDES };

@@ -30,6 +30,7 @@ const BY_EXT = {
   ebook: ['epub', 'mobi', 'azw', 'azw3', 'fb2'],
   archive: ['zip', '7z', 'rar', 'tar', 'gz', 'tgz', 'bz2', 'xz'],
 };
+const MOBI_FAMILY = new Set(['azw', 'azw3']);
 const EXT_KIND = Object.fromEntries(Object.entries(BY_EXT).flatMap(([kind, exts]) => exts.map((e) => [e, kind])));
 
 // file-type result -> kind, for formats where the content says more than the name.
@@ -80,7 +81,10 @@ function classify({ ext, sniffed, animatedGif }) {
   // A GIF with a single frame is really just an image; offer image targets for it.
   if (kind === 'gif' && animatedGif === false) kind = 'image';
   if (!kind) return null;
-  const actualExt = sniffed?.ext && kindFromSniff(sniffed) === kind ? sniffed.ext : ext;
+  let actualExt = sniffed?.ext && kindFromSniff(sniffed) === kind ? sniffed.ext : ext;
+  // file-type calls the whole Mobipocket container family "mobi"; AZW and AZW3 (KF8) are members,
+  // so an .azw/.azw3 name is right, not a rename.
+  if (actualExt === 'mobi' && MOBI_FAMILY.has(ext)) actualExt = ext;
   return {
     kind,
     label: KINDS[kind].label,
