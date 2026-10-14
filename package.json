@@ -13,14 +13,16 @@
     "test": "node --test --test-reporter=spec \"test/**/*.test.mjs\" \"test/**/*.test.cjs\"",
     "check:imports": "node scripts/check-imports.cjs",
     "check": "npm run check:imports && npm test && npm run build",
-    "dist": "vite build && electron-builder --win nsis --x64",
-    "release": "vite build && electron-builder --win nsis --x64 --publish always",
+    "dist": "node scripts/bin-manifest.cjs verify && vite build && electron-builder --win nsis --x64",
+    "release": "node scripts/bin-manifest.cjs verify && npm run check && vite build && electron-builder --win nsis --x64 --publish always",
     "fetch-bin": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/fetch-bin.ps1",
     "e2e:glass-menus": "vite build && electron e2e/glass-menus.cjs",
     "e2e:glass-pickers": "vite build && electron e2e/glass-pickers.cjs",
     "e2e:screenshots": "vite build && electron e2e/screenshots.cjs",
     "e2e:flow": "cross-env VITE_E2E_HOOKS=1 vite build && electron e2e/conversion-flow.cjs",
-    "test:engines": "node --test --test-reporter=spec test/electron/engines.test.cjs"
+    "test:engines": "node --test --test-reporter=spec test/electron/engines.test.cjs",
+    "bin:record": "node scripts/bin-manifest.cjs record",
+    "bin:verify": "node scripts/bin-manifest.cjs verify"
   },
   "repository": "github:OrMeirDev/Morph",
   "dependencies": {

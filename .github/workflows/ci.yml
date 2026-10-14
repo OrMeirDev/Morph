@@ -1,0 +1,63 @@
+# Required checks for every pull request and push to main (MOR-08). After the first green run,
+# mark both jobs as required in the branch protection / ruleset for main.
+name: CI
+
+on:
+  pull_request:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: Checks and engine matrix (Linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Engines for the conversion matrix
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg poppler-utils p7zip-full \
+            libreoffice-writer libreoffice-calc libreoffice-impress fonts-dejavu-core fonts-noto-core xvfb
+      - run: npm ci --ignore-scripts --no-fund --no-audit
+      - run: npm run check:imports
+      - run: npm test
+      - run: npm run build
+      - name: Production bundle carries no test hook
+        run: "! grep -q __morphAdd dist/assets/*.js"
+      - name: Runtime dependency advisories (report)
+        run: npm audit --omit=dev --audit-level=high || echo "::warning::npm audit reports runtime advisories; see docs/DEPENDENCIES.md"
+      - name: End-to-end flow in Electron
+        run: |
+          node node_modules/electron/install.js
+          VITE_E2E_HOOKS=1 npx vite build
+          xvfb-run -a node_modules/electron/dist/electron --no-sandbox e2e/conversion-flow.cjs
+
+  windows:
+    name: Checks (Windows, no bundled engines)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts --no-fund --no-audit
+      - run: npm run check:imports
+      # Unit tests, sharp image matrix, 7-Zip archive tests (7za from 7zip-bin) and the taskkill
+      # process-tree test run here; ffmpeg/Poppler/LibreOffice/Calibre directions skip without bin/.
+      - run: npm test
+      - run: npm run build

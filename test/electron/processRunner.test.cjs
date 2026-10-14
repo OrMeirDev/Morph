@@ -46,7 +46,7 @@ test('an already-aborted signal never starts the tool', async () => {
   await assert.rejects(runProcess(node, ['-e', ''], { signal: ac.signal, timeoutMs: 1000 }), (e) => e.code === 'cancelled');
 });
 
-test('cancel ends the tool and its descendants', { skip: !posix && 'process-group check is POSIX; Windows taskkill /T is pending a Windows run' }, async () => {
+test('cancel ends the tool and its descendants (process group / taskkill /T)', async () => {
   const ac = new AbortController();
   // The child starts a grandchild that would outlive a plain child.kill().
   const script = 'const c = require("child_process").spawn(process.execPath, ["-e", "setInterval(()=>{},1000)"], { stdio: "ignore" }); console.log(c.pid); setInterval(() => {}, 1000)';
@@ -60,9 +60,8 @@ test('cancel ends the tool and its descendants', { skip: !posix && 'process-grou
   let alive = true;
   try {
     process.kill(grandchild, 0);
-    const stat = require('fs').readFileSync(`/proc/${grandchild}/stat`, 'utf8');
-    alive = stat.split(') ')[1]?.[0] !== 'Z';
+    if (process.platform === 'linux') alive = require('fs').readFileSync(`/proc/${grandchild}/stat`, 'utf8').split(') ')[1]?.[0] !== 'Z';
   } catch { alive = false; }
-  if (alive) { try { execFileSync('kill', ['-9', String(grandchild)]); } catch { /* cleanup */ } }
+  if (alive) { try { if (posix) execFileSync('kill', ['-9', String(grandchild)]); else process.kill(grandchild); } catch { /* cleanup */ } }
   assert.equal(alive, false, 'grandchild survived cancel');
 });

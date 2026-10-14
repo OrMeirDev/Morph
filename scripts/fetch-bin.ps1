@@ -6,7 +6,30 @@
 #   bin/calibre      Calibre program files        e-books (EPUB, MOBI, AZW3 <-> PDF)
 # MSI packages are unpacked with an administrative extract (msiexec /a), which copies the files
 # without installing anything on this computer.
+#
+# Reproducible payloads: set exact versions in $Pins below (winget package versions; the URL of a
+# dated FFmpeg-Builds zip; a poppler-windows release tag). With -RequirePinned the script refuses
+# to fetch anything unpinned. Afterwards run `npm run bin:verify` (or `npm run bin:record` for a new,
+# tested payload): packaging refuses a bin/ that does not match bin-manifest.json.
+param([switch]$RequirePinned)
 $ErrorActionPreference = 'Stop'
+
+# $null = latest (prints a warning). Fill these in from a tested build before a release.
+$Pins = @{
+    'ffmpeg'                            = $null   # full URL of a dated FFmpeg-Builds win64-gpl zip
+    'poppler'                           = $null   # poppler-windows release tag, e.g. 'v24.08.0-0'
+    '7zip.7zip'                         = $null   # winget version
+    'TheDocumentFoundation.LibreOffice' = $null   # winget version
+    'calibre.calibre'                   = $null   # winget version
+}
+function Pin($key) {
+    $v = $Pins[$key]
+    if (-not $v) {
+        if ($RequirePinned) { throw "No pinned version for $key (remove -RequirePinned or set `$Pins['$key'])" }
+        Write-Warning "$key is not pinned: fetching the latest release"
+    }
+    return $v
+}
 $root = Split-Path -Parent $PSScriptRoot
 $bin = Join-Path $root 'bin'
 $tmp = Join-Path ([IO.Path]::GetTempPath()) ('morph-bin-' + [guid]::NewGuid())
@@ -21,7 +44,10 @@ function Expand-Msi($msi, $dest) {
 function Get-WingetMsi($id, $dir) {
     New-Item -ItemType Directory -Force $dir | Out-Null
     # No --installer-type filter: these packages list their MSI as type "wix", not "msi".
-    winget download --id $id -e --architecture x64 --download-directory $dir --accept-source-agreements --accept-package-agreements | Out-Null
+    $version = Pin $id
+    $versionArgs = @()
+    if ($version) { $versionArgs = @('--version', $version) }
+    winget download --id $id -e @versionArgs --architecture x64 --download-directory $dir --accept-source-agreements --accept-package-agreements | Out-Null
     $msi = Get-ChildItem $dir -Filter *.msi | Select-Object -First 1
     if (-not $msi) { throw "winget did not download an MSI for $id" }
     return $msi.FullName
@@ -35,7 +61,9 @@ function Replace-Dir($from, $to) {
 if (-not (Has 'ffmpeg' 'ffmpeg.exe')) {
 Step 'ffmpeg'
 $ffZip = Join-Path $tmp 'ffmpeg.zip'
-Get-File 'https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip' $ffZip
+$ffUrl = Pin 'ffmpeg'
+if (-not $ffUrl) { $ffUrl = 'https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip' }
+Get-File $ffUrl $ffZip
 Expand-Archive $ffZip -DestinationPath (Join-Path $tmp 'ffmpeg')
 New-Item -ItemType Directory -Force (Join-Path $bin 'ffmpeg') | Out-Null
 Get-ChildItem (Join-Path $tmp 'ffmpeg') -Recurse -Include 'ffmpeg.exe', 'ffprobe.exe' | Copy-Item -Destination (Join-Path $bin 'ffmpeg') -Force
@@ -53,7 +81,10 @@ Copy-Item (Join-Path $sevenExe.DirectoryName '7z.exe'), (Join-Path $sevenExe.Dir
 if (-not (Has 'poppler' 'pdftoppm.exe')) {
 Step 'Poppler'
 $popDir = Join-Path $tmp 'poppler'
-gh release download --repo oschwartz10612/poppler-windows --pattern 'Release-*.zip' --dir $popDir
+$popTag = Pin 'poppler'
+$popTagArgs = @()
+if ($popTag) { $popTagArgs = @($popTag) }
+gh release download @popTagArgs --repo oschwartz10612/poppler-windows --pattern 'Release-*.zip' --dir $popDir
 Expand-Archive (Get-ChildItem $popDir -Filter *.zip | Select-Object -First 1).FullName -DestinationPath (Join-Path $popDir 'x')
 $pdftoppm = Get-ChildItem (Join-Path $popDir 'x') -Recurse -Filter pdftoppm.exe | Select-Object -First 1
 Replace-Dir $pdftoppm.DirectoryName (Join-Path $bin 'poppler')
@@ -88,6 +119,7 @@ Replace-Dir $ebook.DirectoryName (Join-Path $bin 'calibre')
 
 Remove-Item -Recurse -Force $tmp
 Step 'done'
+Write-Host 'Next: npm test (engine matrix), then npm run bin:verify, or npm run bin:record for a new tested payload.'
 Get-ChildItem $bin -Directory | ForEach-Object {
     $mb = (Get-ChildItem $_.FullName -Recurse -File | Measure-Object Length -Sum).Sum / 1MB
     '{0,-12} {1,8:N0} MB' -f $_.Name, $mb
