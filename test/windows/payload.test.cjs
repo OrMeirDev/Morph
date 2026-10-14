@@ -30,7 +30,7 @@ async function until(fn, ms = 60000, step = 100) {
 }
 
 // A document large enough that LibreOffice is still busy when Stop is pressed.
-function makeBigOdt(file, paragraphs = 6000) {
+function makeBigOdt(file, paragraphs = 40000) {
   makeRichOdt(file); // valid package to start from; content.xml replaced with many paragraphs
   const { makeZip } = require('../electron/helpers.cjs');
   const ns = 'xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" office:version="1.3"';
@@ -40,18 +40,21 @@ function makeBigOdt(file, paragraphs = 6000) {
   return makeZip(file, [{ name: 'mimetype', data: 'application/vnd.oasis.opendocument.text' }, { name: 'content.xml', data: content }, { name: 'META-INF/manifest.xml', data: manifest }]);
 }
 
-async function cancelMidway(S, file, target, sub) {
+// Starts a conversion, waits until the engine's real worker process is running (matched by
+// `worker`), presses Stop at once, and reports what ran and what is left. The process list seen at
+// that moment is the evidence; a conversion that finished first ends 'completed' and fails the test.
+async function cancelMidway(S, file, target, sub, worker) {
   const [d] = await S.intake.detectPaths([file]);
   assert.ok(d.ok, d.error);
   assert.ok(S.coordinator.enqueue({ fileId: d.id, target }).ok);
-  const seen = await until(() => (S.lastUpdate(d.id)?.state === 'converting' && processesUnder(sub).length ? processesUnder(sub) : null), 120000);
-  assert.ok(seen, `the ${sub} engine started (processes seen)`);
-  await new Promise((r) => setTimeout(r, 1500)); // let it get busy (and spawn its helpers)
-  const during = processesUnder(sub);
+  const during = await until(() => {
+    const procs = processesUnder(sub);
+    return procs.some((p) => worker.test(p)) ? procs : null;
+  }, 120000, 50);
   S.coordinator.cancel(d.id);
   await S.coordinator.whenIdle();
   const left = await until(() => (processesUnder(sub).length === 0 ? [] : null), 15000, 250);
-  return { update: S.lastUpdate(d.id), during, left: left ?? processesUnder(sub) };
+  return { update: S.lastUpdate(d.id), during: during || [], left: left ?? processesUnder(sub) };
 }
 
 // A book long enough that rendering it to PDF keeps Calibre busy for many seconds.
@@ -74,7 +77,7 @@ test('Stop during a LibreOffice conversion ends soffice.com and soffice.bin; no 
     await S.tools.probe();
     const dir = S.dirOf('big');
     const file = makeBigOdt(path.join(dir, 'big.odt'));
-    const r = await cancelMidway(S, file, 'pdf', 'libreoffice');
+    const r = await cancelMidway(S, file, 'pdf', 'libreoffice', /soffice\.bin/i);
     console.log('LibreOffice processes while converting:', r.during.join(', '));
     assert.equal(r.update.state, 'cancelled');
     assert.ok(r.during.some((p) => /soffice\.bin/i.test(p)), 'soffice.bin (the real worker) was running');
@@ -94,7 +97,7 @@ test('Stop during a Calibre conversion ends ebook-convert and its helpers; no ou
     await S.tools.probe();
     const dir = S.dirOf('book');
     const file = makeBigEpub(path.join(dir, 'book.epub'));
-    const r = await cancelMidway(S, file, 'pdf', 'calibre');
+    const r = await cancelMidway(S, file, 'pdf', 'calibre', /ebook-convert|calibre-parallel/i);
     console.log('Calibre processes while converting:', r.during.join(', '));
     assert.ok(r.during.some((p) => /ebook-convert|calibre-parallel/i.test(p)), 'Calibre was still converting when Stop was pressed');
     assert.equal(r.update.state, 'cancelled');
