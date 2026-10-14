@@ -2,6 +2,7 @@
 // binaries that were tested, and a tampered, partial or swapped payload stops packaging.
 //
 //   node scripts/bin-manifest.cjs record   after fetch-bin + a passing test run: writes bin-manifest.json
+//   node scripts/bin-manifest.cjs record --out f   (CI) record to another file
 //   node scripts/bin-manifest.cjs verify   before packaging (npm run dist / release): exits 1 on any
 //                                          missing, changed or unexpected file, or no manifest
 //
@@ -74,7 +75,8 @@ function verify({ binDir, manifestFile }) {
 if (require.main === module) {
   const cmd = process.argv[2];
   const binDir = path.join(ROOT, 'bin');
-  const manifestFile = path.join(ROOT, 'bin-manifest.json');
+  const outIdx = process.argv.indexOf('--out');
+  const manifestFile = outIdx > 0 ? path.resolve(process.argv[outIdx + 1]) : path.join(ROOT, 'bin-manifest.json');
   if (cmd === 'record') {
     const m = record({ binDir, manifestFile });
     console.log(`Recorded ${m.fileCount} files in bin-manifest.json. Commit it with the release.`);

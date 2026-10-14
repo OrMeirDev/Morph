@@ -72,3 +72,84 @@ jobs:
       # process-tree test run here; ffmpeg/Poppler/LibreOffice/Calibre directions skip without bin/.
       - run: npm test
       - run: npm run build
+
+  windows-payload:
+    # The engine payload Morph ships, tested on Windows: fetched from scripts/engines.lock.json with
+    # every download hash-checked (fresh or cached), the full engine/document/e-book matrix and the
+    # Windows-only checks against it, then the packaged app and the installer (unsigned).
+    name: Bundled engines, packaged app and installer (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 150
+    env:
+      MORPH_REQUIRE_PAYLOAD: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts --no-fund --no-audit
+      - uses: actions/cache@v4
+        with:
+          path: .cache/engines
+          key: engines-${{ hashFiles('scripts/engines.lock.json') }}
+      - name: Fetch the pinned engine payload (every download hash-checked)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/fetch-engines.cjs --resolve-out engines.resolved.json
+      - name: Record the payload (bin-manifest)
+        run: node scripts/bin-manifest.cjs record --out bin-manifest.ci.json
+      - name: Payload matches the committed bin-manifest.json
+        shell: bash
+        run: |
+          if [ -f bin-manifest.json ]; then node scripts/bin-manifest.cjs verify
+          else echo "::warning::no committed bin-manifest.json yet; recorded as an artifact for review"; fi
+      - name: Prepare FAT32, exFAT and SMB test locations
+        shell: pwsh
+        run: |
+          foreach ($fs in @(@{n='fat32'; l='R'}, @{n='exfat'; l='S'})) {
+            $vhd = Join-Path $env:RUNNER_TEMP "$($fs.n).vhdx"
+            $script = "create vdisk file=`"$vhd`" maximum=512 type=expandable`nattach vdisk`ncreate partition primary`nformat fs=$($fs.n) quick label=MORPH`nassign letter=$($fs.l)`n"
+            $dp = Join-Path $env:RUNNER_TEMP "dp-$($fs.n).txt"
+            Set-Content -Path $dp -Value $script -Encoding ascii
+            diskpart /s $dp | Out-Host
+          }
+          New-Item -ItemType Directory -Force C:\morph-share | Out-Null
+          New-SmbShare -Name morphshare -Path C:\morph-share -FullAccess "$env:USERDOMAIN\$env:USERNAME" | Out-Host
+          "MORPH_TEST_FAT32=R:\" >> $env:GITHUB_ENV
+          "MORPH_TEST_EXFAT=S:\" >> $env:GITHUB_ENV
+          "MORPH_TEST_SMB=\\localhost\morphshare" >> $env:GITHUB_ENV
+          Get-Volume -DriveLetter R,S | Format-Table DriveLetter,FileSystem,Size | Out-Host
+      - name: Tests with the bundled engines (nothing may skip)
+        shell: bash
+        run: |
+          npm test 2>&1 | tee test.log
+          ! grep -E "# (no 7-Zip|no ffmpeg|no poppler|no LibreOffice|no Calibre|needs Windows|MORPH_TEST_)" test.log
+      - name: The engines did not change their own files
+        run: node scripts/bin-manifest.cjs verify --out bin-manifest.ci.json
+      - name: Build the app and the installer (unsigned, version 1.0.4-ci)
+        shell: bash
+        run: |
+          npx vite build
+          npx electron-builder --win nsis --x64 --publish never -c.extraMetadata.version=1.0.4-ci
+      - name: Packaged app smoke test (win-unpacked)
+        run: node e2e/packaged-smoke.cjs release/win-unpacked/Morph.exe --expect-version 1.0.4-ci --report smoke.json
+      - name: Download the previous release (1.0.3)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download v1.0.3 --repo ${{ github.repository }} --pattern "Morph-Setup-1.0.3.exe" --dir old
+      - name: Install over 1.0.3, check the installed copy, uninstall
+        run: node e2e/installer-check.cjs old/Morph-Setup-1.0.3.exe release/Morph-Setup-1.0.4-ci.exe --new-version 1.0.4-ci --report installer.json
+      - name: Evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-payload-evidence
+          path: |
+            engines.resolved.json
+            bin-manifest.ci.json
+            bin/ENGINES.json
+            test.log
+            smoke.json
+            installer.json
+          if-no-files-found: warn

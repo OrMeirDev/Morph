@@ -15,7 +15,7 @@
     "check": "npm run check:imports && npm test && npm run build",
     "dist": "node scripts/bin-manifest.cjs verify && vite build && electron-builder --win nsis --x64",
     "release": "node scripts/bin-manifest.cjs verify && npm run check && vite build && electron-builder --win nsis --x64 --publish always",
-    "fetch-bin": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/fetch-bin.ps1",
+    "fetch-bin": "node scripts/fetch-engines.cjs --require-pinned",
     "e2e:glass-menus": "vite build && electron e2e/glass-menus.cjs",
     "e2e:glass-pickers": "vite build && electron e2e/glass-pickers.cjs",
     "e2e:screenshots": "vite build && electron e2e/screenshots.cjs",

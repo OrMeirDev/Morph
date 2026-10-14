@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "note": "Exact engine payload Morph bundles. Edit only together with a passing Windows payload CI run; see docs/RELEASING.md.",
+  "engines": [
+    {
+      "name": "ffmpeg",
+      "version": "resolved-by-ci",
+      "license": "GPL-3.0-or-later (GPL build: libx264, libvpx, libmp3lame, libopus, libvorbis)",
+      "source": "https://github.com/GyanD/codexffmpeg (release builds by gyan.dev)",
+      "sourceCode": "https://ffmpeg.org/download.html",
+      "download": {
+        "resolve": { "github": "GyanD/codexffmpeg", "asset": "^ffmpeg-[0-9.]+-essentials_build\\.zip$", "minAgeDays": 14 },
+        "type": "zip"
+      },
+      "install": { "recipe": "files", "anchor": "ffmpeg.exe", "files": ["ffmpeg.exe", "ffprobe.exe"], "to": "ffmpeg" }
+    },
+    {
+      "name": "7zip",
+      "version": "26.03",
+      "license": "GNU LGPL-2.1-or-later with the unRAR restriction; parts BSD-3-Clause",
+      "source": "https://www.7-zip.org/ (releases on https://github.com/ip7z/7zip)",
+      "sourceCode": "https://www.7-zip.org/download.html",
+      "download": { "url": "https://github.com/ip7z/7zip/releases/download/26.03/7z2603-x64.msi", "type": "msi" },
+      "install": { "recipe": "files", "anchor": "7z.exe", "files": ["7z.exe", "7z.dll", "License.txt"], "to": "7zip" }
+    },
+    {
+      "name": "poppler",
+      "version": "resolved-by-ci",
+      "license": "GPL-2.0-or-later",
+      "source": "https://github.com/oschwartz10612/poppler-windows",
+      "sourceCode": "https://poppler.freedesktop.org/",
+      "download": {
+        "resolve": { "github": "oschwartz10612/poppler-windows", "asset": "^Release-[0-9.]+-[0-9]+\\.zip$", "minAgeDays": 14 },
+        "type": "zip"
+      },
+      "install": { "recipe": "folder", "anchor": "pdftoppm.exe", "levelsUp": 0, "to": "poppler" }
+    },
+    {
+      "name": "libreoffice",
+      "version": "26.2.6.3",
+      "license": "MPL-2.0 (parts under other open-source licenses, see bin/libreoffice/license.txt)",
+      "source": "https://www.libreoffice.org/",
+      "sourceCode": "https://git.libreoffice.org/core/+/refs/tags/libreoffice-26.2.6.3",
+      "download": { "url": "https://downloadarchive.documentfoundation.org/libreoffice/old/26.2.6.3/win/x86_64/LibreOffice_26.2.6.3_Win_x86-64.msi", "type": "msi" },
+      "install": { "recipe": "folder", "anchor": "soffice.exe", "levelsUp": 1, "to": "libreoffice", "post": ["trimLibreOffice"] }
+    },
+    {
+      "name": "calibre",
+      "version": "9.15.0",
+      "license": "GPL-3.0-only",
+      "source": "https://calibre-ebook.com/",
+      "sourceCode": "https://github.com/kovidgoyal/calibre/tree/v9.15.0",
+      "download": { "url": "https://download.calibre-ebook.com/9.15.0/calibre-64bit-9.15.0.msi", "type": "msi" },
+      "install": { "recipe": "folder", "anchor": "ebook-convert.exe", "levelsUp": 0, "to": "calibre" }
+    }
+  ]
+}

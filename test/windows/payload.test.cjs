@@ -1,0 +1,176 @@
+// Windows-only checks against the real bundled engines in bin/ (fetched by scripts/fetch-engines.cjs).
+// Run in CI by the "Bundled engines" job; every test fails (never skips) there if bin/ is missing,
+// because MORPH_REQUIRE_PAYLOAD=1. On other machines the file skips as a whole.
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { execFileSync } = require('child_process');
+const { makeRichOdt, makeRichEpub } = require('../electron/helpers.cjs');
+const { createStack } = require('../electron/engineStack.cjs');
+const { OfficeProfileManager } = require('../../electron/infra/OfficeProfileManager.cjs');
+
+const BIN = path.join(__dirname, '..', '..', 'bin');
+const required = process.env.MORPH_REQUIRE_PAYLOAD === '1';
+const available = process.platform === 'win32' && fs.existsSync(path.join(BIN, 'libreoffice'));
+if (required) assert.ok(available, 'bin/ payload required (MORPH_REQUIRE_PAYLOAD=1) but missing or not on Windows');
+const opts = { skip: !available && 'needs Windows and the bundled engines in bin/', timeout: 600000 };
+
+// Processes whose executable lives under the given bin/ subfolder (path match, not just names).
+function processesUnder(sub) {
+  const dir = path.join(BIN, sub).replace(/'/g, "''");
+  const ps = `Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith('${dir}', 'OrdinalIgnoreCase') } | ForEach-Object { "$($_.ProcessId) $($_.Name)" }`;
+  const out = execFileSync('powershell.exe', ['-NoProfile', '-Command', ps], { encoding: 'utf8' }).trim();
+  return out ? out.split(/\r?\n/) : [];
+}
+async function until(fn, ms = 60000, step = 100) {
+  const t0 = Date.now();
+  for (;;) { const v = await fn(); if (v) return v; if (Date.now() - t0 > ms) return null; await new Promise((r) => setTimeout(r, step)); }
+}
+
+// A document large enough that LibreOffice is still busy when Stop is pressed.
+function makeBigOdt(file, paragraphs = 6000) {
+  makeRichOdt(file); // valid package to start from; content.xml replaced with many paragraphs
+  const { makeZip } = require('../electron/helpers.cjs');
+  const ns = 'xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" office:version="1.3"';
+  const body = Array.from({ length: paragraphs }, (_, i) => `<text:p>Paragraph ${i} שורה בעברית with enough words to lay out a full line of text on the page.</text:p>`).join('');
+  const content = `<?xml version="1.0" encoding="UTF-8"?><office:document-content ${ns}><office:body><office:text>${body}</office:text></office:body></office:document-content>`;
+  const manifest = '<?xml version="1.0" encoding="UTF-8"?><manifest:manifest xmlns:manifest="urn:oasis:names:tc:opendocument:xmlns:manifest:1.0" manifest:version="1.3"><manifest:file-entry manifest:full-path="/" manifest:media-type="application/vnd.oasis.opendocument.text"/><manifest:file-entry manifest:full-path="content.xml" manifest:media-type="text/xml"/></manifest:manifest>';
+  return makeZip(file, [{ name: 'mimetype', data: 'application/vnd.oasis.opendocument.text' }, { name: 'content.xml', data: content }, { name: 'META-INF/manifest.xml', data: manifest }]);
+}
+
+async function cancelMidway(S, file, target, sub) {
+  const [d] = await S.intake.detectPaths([file]);
+  assert.ok(d.ok, d.error);
+  assert.ok(S.coordinator.enqueue({ fileId: d.id, target }).ok);
+  const seen = await until(() => (S.lastUpdate(d.id)?.state === 'converting' && processesUnder(sub).length ? processesUnder(sub) : null), 120000);
+  assert.ok(seen, `the ${sub} engine started (processes seen)`);
+  await new Promise((r) => setTimeout(r, 1500)); // let it get busy (and spawn its helpers)
+  const during = processesUnder(sub);
+  S.coordinator.cancel(d.id);
+  await S.coordinator.whenIdle();
+  const left = await until(() => (processesUnder(sub).length === 0 ? [] : null), 15000, 250);
+  return { update: S.lastUpdate(d.id), during, left: left ?? processesUnder(sub) };
+}
+
+const noStaging = (dir) => fs.readdirSync(dir).filter((n) => n.startsWith('.~morph-'));
+
+test('Stop during a LibreOffice conversion ends soffice.com and soffice.bin; no output, no staging', opts, async () => {
+  const S = createStack('win-lo-cancel');
+  try {
+    await S.tools.probe();
+    const dir = S.dirOf('big');
+    const file = makeBigOdt(path.join(dir, 'big.odt'));
+    const r = await cancelMidway(S, file, 'pdf', 'libreoffice');
+    console.log('LibreOffice processes while converting:', r.during.join(', '));
+    assert.equal(r.update.state, 'cancelled');
+    assert.ok(r.during.some((p) => /soffice\.bin/i.test(p)), 'soffice.bin (the real worker) was running');
+    assert.deepEqual(r.left, [], 'no LibreOffice process left');
+    assert.deepEqual(fs.readdirSync(dir), ['big.odt'], 'no output');
+    assert.deepEqual(noStaging(dir), []);
+    // The profile survived the kill: the next conversion works.
+    const small = makeRichOdt(path.join(S.dirOf('after'), 'small.odt'));
+    const u = await S.convert(small, 'pdf');
+    assert.equal(u.state, 'completed', u.error);
+  } finally { S.stop(); }
+});
+
+test('Stop during a Calibre conversion ends ebook-convert and its helpers; no output', opts, async () => {
+  const S = createStack('win-cal-cancel');
+  try {
+    await S.tools.probe();
+    const dir = S.dirOf('book');
+    const file = makeRichEpub(path.join(dir, 'book.epub'));
+    const r = await cancelMidway(S, file, 'pdf', 'calibre');
+    console.log('Calibre processes while converting:', r.during.join(', '));
+    assert.equal(r.update.state, 'cancelled');
+    assert.deepEqual(r.left, [], 'no Calibre process left (ebook-convert, calibre-parallel, QtWebEngineProcess)');
+    assert.deepEqual(fs.readdirSync(dir), ['book.epub']);
+  } finally { S.stop(); }
+});
+
+test('Office profile: a first start cancelled midway, then a damaged profile, both recover', opts, async () => {
+  const S = createStack('win-lo-profile');
+  try {
+    await S.tools.probe();
+    const base = path.join(S.root, 'prof');
+    S.coordinator.officeProfiles = new OfficeProfileManager({ baseDir: base });
+    const file = makeRichOdt(path.join(S.dirOf('p'), 'letter.odt'));
+    // Cancel while the profile is being created (first start).
+    const [d] = await S.intake.detectPaths([file]);
+    S.coordinator.enqueue({ fileId: d.id, target: 'pdf' });
+    await until(() => processesUnder('libreoffice').length > 0, 60000);
+    S.coordinator.cancel(d.id);
+    await S.coordinator.whenIdle();
+    assert.equal(S.lastUpdate(d.id).state, 'cancelled');
+    const profileDir = S.coordinator.officeProfiles.profileDirFor(S.tools.path('soffice'));
+    // Normally Stop lands inside the first start (it takes seconds on Windows); if the first start
+    // was already done, the profile is ready and this run only proves cancel + recovery.
+    console.log('first start interrupted by Stop:', !OfficeProfileManager.healthy(profileDir));
+    let u = await S.convert(file, 'docx');
+    assert.equal(u.state, 'completed', `after a cancelled first start: ${u.error}`);
+    assert.equal(OfficeProfileManager.healthy(profileDir), true);
+    // Damage the profile the way an interrupted first start did (tiny registry).
+    fs.writeFileSync(path.join(profileDir, 'user', 'registrymodifications.xcu'), '<?xml version="1.0"?><oor:items xmlns:oor="http://openoffice.org/2001/registry"/>');
+    u = await S.convert(file, 'rtf');
+    assert.equal(u.state, 'completed', `after a damaged profile: ${u.error}`);
+    assert.equal(OfficeProfileManager.healthy(profileDir), true, 'rebuilt');
+  } finally { S.stop(); }
+});
+
+test('Hebrew folder names and long paths through every engine', opts, async () => {
+  const S = createStack('win-paths');
+  try {
+    await S.tools.probe();
+    // A Hebrew user-like folder and a path near (not over) MAX_PATH once outputs are added.
+    let dir = path.join(S.root, 'משתמש עברי', 'מסמכים וקבצים');
+    const pad = 'תיקייה-ארוכה-מאוד-';
+    while (dir.length < 200) dir = path.join(dir, pad);
+    fs.mkdirSync(dir, { recursive: true });
+    console.log('path length', dir.length);
+    // The LibreOffice profile under a Hebrew base folder, within the 100-character rule.
+    const profBase = path.join(os.tmpdir(), 'מורף-פרופיל');
+    S.coordinator.officeProfiles = new OfficeProfileManager({ baseDir: profBase });
+    const { makePng, makeWav, makePdf, makeZip } = require('../electron/helpers.cjs');
+    const cases = [
+      [await makePng(path.join(dir, 'תמונה.png')), 'webp'],
+      [makeWav(path.join(dir, 'צליל.wav')), 'mp3'],
+      [await makePdf(path.join(dir, 'מסמך.pdf'), 1), 'png'],
+      [makeRichOdt(path.join(dir, 'מכתב.odt')), 'docx'],
+      [makeRichEpub(path.join(dir, 'ספר.epub')), 'mobi'],
+      [makeZip(path.join(dir, 'ארכיון.zip'), [{ name: 'קובץ.txt', data: 'שלום' }]), '7z'],
+    ];
+    for (const [file, target] of cases) {
+      const u = await S.convert(file, target);
+      assert.equal(u.state, 'completed', `${path.basename(file)} -> ${target}: ${u.error}`);
+      assert.ok(u.output.startsWith(dir), 'published next to the original');
+      assert.ok(fs.statSync(u.output).size > 0);
+    }
+  } finally { S.stop(); }
+});
+
+// Output publication on other file systems. The CI job prepares them (FAT32 and exFAT virtual
+// disks, an SMB share on this machine) and passes their roots; the job requires all three.
+for (const [name, env] of [['FAT32', 'MORPH_TEST_FAT32'], ['exFAT', 'MORPH_TEST_EXFAT'], ['SMB share', 'MORPH_TEST_SMB']]) {
+  const root = process.env[env];
+  test(`publication on ${name}: free names, no overwrite, no leftovers`, { ...opts, skip: opts.skip || (!root && !required && `${env} not set`) }, async () => {
+    assert.ok(root, `${env} must point at a prepared ${name} folder`);
+    const S = createStack(`win-fs-${name.replace(/\W/g, '')}`);
+    try {
+      await S.tools.probe();
+      const dir = path.join(root, `morph-${Date.now()}`);
+      fs.mkdirSync(dir, { recursive: true });
+      const { makePng } = require('../electron/helpers.cjs');
+      const png = await makePng(path.join(dir, 'pic.png'));
+      fs.writeFileSync(path.join(dir, 'pic.webp'), 'EXISTING');
+      const a = await S.convert(png, 'webp');
+      const b = await S.convert(png, 'webp');
+      assert.equal(a.state, 'completed', a.error);
+      assert.equal(b.state, 'completed', b.error);
+      assert.deepEqual([path.basename(a.output), path.basename(b.output)], ['pic (1).webp', 'pic (2).webp']);
+      assert.equal(fs.readFileSync(path.join(dir, 'pic.webp'), 'utf8'), 'EXISTING');
+      assert.deepEqual(noStaging(dir), []);
+    } finally { S.stop(); }
+  });
+}
