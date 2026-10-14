@@ -182,6 +182,7 @@ class ConversionCoordinator {
         officeProfiles: this.officeProfiles,
       };
       await fsp.mkdir(job.outDir, { recursive: true });
+      throwIfCancelled(); // Stop may have landed during the awaits above: never start the engine then
       const artifact = await this.adapters[job.adapter].run(ctx);
       throwIfCancelled();
       this.setState(job, 'verifying', { progress: 99 });

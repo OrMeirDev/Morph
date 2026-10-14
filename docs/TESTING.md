@@ -26,14 +26,15 @@ ffmpeg, Poppler, LibreOffice or 7-Zip directions were skipped.
 | Persistence | `repositories.test` | validation, corrupt file set aside, v0 migration, atomic writes, journal |
 | IPC | `ipc.test` | schemas, sender/frame/URL guard, every preload channel has a schema |
 | Release | `binManifest.test` | tampered/missing/extra payload files fail |
-| Engines (real) | `engines.test` | MOR-01 regressions with real sharp, image targets (alpha flatten, dimensions), BMP via ffmpeg, audio, video (odd sizes, audio kept), animated GIF, PDF single/multi/text, Office incl. Hebrew RTL through DOCX → PDF, PDF → DOCX, archives incl. tar.gz round trip, traversal and symlink zips refused, missing Calibre not offered, no leftovers |
+| Engines (real) | `engines.test` | MOR-01 regressions with real sharp, image targets (alpha flatten, dimensions), BMP via ffmpeg, audio incl. → WAV (codec, length), video incl. MKV/M4A/OGG/FLAC (streams, codecs), animated GIF and APNG (detected by content), SVG → PNG/JPG/WEBP (aspect, colours)/PDF, PDF single/multi/text, Office incl. Hebrew RTL through DOCX → PDF, PDF → DOCX, archives incl. tar.gz round trip, traversal and symlink zips refused, missing Calibre not offered, no leftovers |
+| Documents (real) | `documents.test` | inside the output: DOCX Hebrew paragraph right-to-left and English not, bold run, one 2×2 table, page break; PDF 2 pages with Hebrew and table text; DOCX → ODT table + `rl-tb`; RTF table, bold, exactly one RTL paragraph, Hebrew escapes; TXT without markup; EPUB package with text; XLSX both sheets + `SUM(A1:A2)` with cached 7; CSV first sheet only with computed value; spreadsheet → PDF; PPTX 3 slides with their text; slides → PDF 3 pages; PPTX → ODP 3 pages. Mutation-checked: removing RTL/bold/page break from the fixture fails 4 tests |
 | UI (real window) | `e2e/conversion-flow.cjs` | 15 checks listed in the script |
 
 All fixtures are generated at test time (no binary fixtures in git).
 
 ## Results on the refactor branch (Linux, Node 22, Electron 44.5.1)
 
-- `npm test`: 126 passed, 0 failed, 0 skipped (with ffmpeg 6.1.1, Poppler 24.02, LibreOffice
+- `npm test`: 157 passed, 0 failed, 0 skipped, stable over 4 consecutive runs (with ffmpeg 6.1.1, Poppler 24.02, LibreOffice
   24.2.7, 7-Zip 16.02; Calibre absent → its directions are reported not offered).
 - `e2e/conversion-flow.cjs`: 15/15.
 - Screenshots of every page: identical to the 1.0.3 build rendered on the same Electron, except the
@@ -56,4 +57,5 @@ These need a Windows 10/11 x64 machine with `npm run fetch-bin` payloads; record
 6. Installer: fresh install, uninstall, and auto-update from 1.0.3 keeping settings and history
    (v0 files are migrated in place).
 7. Signed installer and app show the expected publisher (after signing is set up, `docs/RELEASING.md`).
-8. Complex Office/PDF fixtures (tables, fonts, formulas, slides, page counts) owned by the project.
+8. The same document tests with the bundled Windows LibreOffice (Hebrew fonts differ from Linux), plus
+   real-world files: embedded fonts, images, tracked changes, scanned PDFs.

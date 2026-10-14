@@ -5,56 +5,14 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
-const { tmpDir, makePng, makePdf, makeWav, makeZip, sevenZip } = require('./helpers.cjs');
+const { makePng, makePdf, makeWav, makeZip } = require('./helpers.cjs');
+const { createStack } = require('./engineStack.cjs');
 
-const sz = sevenZip();
-if (sz) process.env.MORPH_TOOL_SEVENZIP = sz;
-
-const limits = require('../../electron/domain/limits.cjs');
-const { ToolRegistry } = require('../../electron/infra/ToolRegistry.cjs');
+const S = createStack('engines');
+const { root, tools, intake, coordinator, updates, lastUpdate, convert, dirOf, ffprobe, has } = S;
 const { runProcess } = require('../../electron/infra/ProcessRunner.cjs');
-const { PersistentWorker, runInFreshWorker } = require('../../electron/infra/WorkerHost.cjs');
-const { JobRepository } = require('../../electron/infra/repositories.cjs');
-const { OfficeProfileManager } = require('../../electron/infra/OfficeProfileManager.cjs');
-const { FileIntakeService } = require('../../electron/app/FileIntakeService.cjs');
-const { ConversionCoordinator } = require('../../electron/app/ConversionCoordinator.cjs');
-const adapters = require('../../electron/adapters/index.cjs');
 
-const root = tmpDir('engines');
-const worker = new PersistentWorker();
-const tools = new ToolRegistry({ probeImages: () => worker.request({ type: 'probe' }, { timeoutMs: 30000 }) });
-const intake = new FileIntakeService({ detect: (f) => worker.request({ type: 'detect', file: f }, { timeoutMs: 15000 }), tools, limits: limits.intake });
-const updates = [];
-const history = [];
-const coordinator = new ConversionCoordinator({
-  intake,
-  tools,
-  settings: { get: () => ({ outputMode: 'beside', folder: root, quality: 'medium', maxHeight: null }) },
-  history: { add: (e) => { history.push(e); return e; } },
-  journal: new JobRepository(path.join(root, 'state')),
-  adapters,
-  officeProfiles: new OfficeProfileManager({ baseDir: path.join(root, 'lo') }),
-  runTool: (name, args, o) => { const exe = tools.path(name); return exe ? runProcess(exe, args, { ...o, name }) : Promise.reject(new Error(`missing-tool:${name}`)); },
-  runWorker: runInFreshWorker,
-  emit: (u) => updates.push(u),
-  workspaceRoot: path.join(root, 'ws'),
-});
-
-test.after(() => worker.stop());
-
-const lastUpdate = (fileId) => updates.filter((u) => u.fileId === fileId).at(-1);
-async function convert(file, target) {
-  const [d] = await intake.detectPaths([file]);
-  assert.ok(d.ok, `detected ${path.basename(file)}: ${d.error}`);
-  assert.ok(d.targets.includes(target), `${d.kind} offers ${target} (offers ${d.targets})`);
-  const r = coordinator.enqueue({ fileId: d.id, target });
-  assert.ok(r.ok, r.error);
-  await coordinator.whenIdle();
-  return lastUpdate(d.id);
-}
-const has = (cap) => tools.has(cap);
-const dirOf = (tag) => { const d = path.join(root, tag); fs.mkdirSync(d, { recursive: true }); return d; };
-const ffprobe = async (file) => JSON.parse((await runProcess(tools.path('ffprobe'), ['-v', 'error', '-show_streams', '-show_format', '-of', 'json', file], { timeoutMs: 30000, captureStdout: true })).stdout);
+test.after(() => S.stop());
 
 test('tool probes ran', async () => {
   await tools.probe();
@@ -146,23 +104,88 @@ test('video matrix (odd dimensions, audio track)', async (t) => {
   const src = path.join(dirOf('vid-src'), 'clip.mkv');
   await runProcess(tools.path('ffmpeg'), ['-hide_banner', '-f', 'lavfi', '-i', 'testsrc=size=65x49:rate=10:duration=1', '-f', 'lavfi', '-i', 'sine=duration=1',
     '-c:v', 'ffv1', '-c:a', 'pcm_s16le', '-shortest', src], { timeoutMs: 60000 });
-  for (const target of ['mp4', 'mov', 'webm', 'avi', 'mp3', 'wav', 'gif', 'apng']) {
+  const srcAvi = path.join(dirOf('vid-src'), 'clip.avi');
+  await runProcess(tools.path('ffmpeg'), ['-hide_banner', '-i', src, '-c:v', 'mpeg4', '-c:a', 'pcm_s16le', srcAvi], { timeoutMs: 60000 });
+  for (const target of ['mp4', 'mov', 'mkv', 'webm', 'avi', 'mp3', 'm4a', 'wav', 'ogg', 'flac', 'gif', 'apng']) {
     const enc = require('../../electron/domain/capabilities.cjs').FFMPEG_ENCODERS[target];
     await t.test(target, { skip: !enc.every((e) => has(`ffmpeg:enc:${e}`)) && 'encoder missing' }, async () => {
       const d = dirOf(`vid-${target}`);
-      const file = path.join(d, 'clip.mkv');
-      fs.copyFileSync(src, file);
+      // MKV is never offered for an MKV source (same format): use an AVI copy of the clip for it.
+      const file = path.join(d, target === 'mkv' ? 'clip.avi' : 'clip.mkv');
+      fs.copyFileSync(target === 'mkv' ? srcAvi : src, file);
       const u = await convert(file, target);
       assert.equal(u.state, 'completed', u.error);
       const info = await ffprobe(u.output);
       const v = info.streams.find((s) => s.codec_type === 'video');
       const a = info.streams.find((s) => s.codec_type === 'audio');
-      if (['mp4', 'mov', 'webm', 'avi'].includes(target)) {
+      if (['mp4', 'mov', 'mkv', 'webm', 'avi'].includes(target)) {
         assert.ok(v && a, 'video and audio kept');
         if (target !== 'avi' && target !== 'webm') assert.deepEqual([v.width % 2, v.height % 2], [0, 0], 'padded to even size for yuv420p');
       }
-      if (['mp3', 'wav'].includes(target)) assert.ok(a && !v, 'audio only');
+      if (['mp3', 'm4a', 'wav', 'ogg', 'flac'].includes(target)) assert.ok(a && !v, 'audio only');
+      if (target === 'flac') assert.equal(a.codec_name, 'flac');
+      if (target === 'ogg') assert.equal(a.codec_name, 'vorbis');
       if (['gif', 'apng'].includes(target)) assert.ok(v && Number(v.nb_frames || 2) > 1, 'still animated');
+    });
+  }
+});
+
+test('audio to WAV is plain 16-bit PCM of the same length', async (t) => {
+  if (!(await tools.probe()).has('ffmpeg:enc:libmp3lame')) return t.skip('no ffmpeg mp3 encoder');
+  const d = dirOf('aud-wav');
+  const mp3 = path.join(d, 'tone.mp3');
+  await runProcess(tools.path('ffmpeg'), ['-hide_banner', '-i', makeWav(path.join(dirOf('aud-wav-src'), 'tone.wav'), { seconds: 1 }), mp3], { timeoutMs: 30000 });
+  const u = await convert(mp3, 'wav');
+  assert.equal(u.state, 'completed', u.error);
+  const a = (await ffprobe(u.output)).streams[0];
+  assert.equal(a.codec_name, 'pcm_s16le');
+  assert.ok(Math.abs(Number(a.duration) - 1) < 0.2, `duration ${a.duration}`);
+});
+
+test('APNG to GIF, video and a single frame', async (t) => {
+  await tools.probe();
+  if (!has('ffmpeg')) return t.skip('no ffmpeg');
+  const src = path.join(dirOf('apng-src'), 'anim.apng');
+  await runProcess(tools.path('ffmpeg'), ['-hide_banner', '-f', 'lavfi', '-i', 'testsrc=size=48x32:rate=5:duration=1', '-plays', '0', '-f', 'apng', src], { timeoutMs: 60000 });
+  for (const target of ['gif', 'mp4', 'webm', 'png']) {
+    await t.test(target, async () => {
+      const d = dirOf(`apng-${target}`);
+      fs.copyFileSync(src, path.join(d, 'anim.png')); // APNG is usually named .png; content decides
+      const [det] = await intake.detectPaths([path.join(d, 'anim.png')]);
+      assert.equal(det.kind, 'apng', 'detected as APNG by content');
+      const u = await convert(path.join(d, 'anim.png'), target);
+      assert.equal(u.state, 'completed', u.error);
+      const v = (await ffprobe(u.output)).streams.find((x) => x.codec_type === 'video');
+      if (target === 'png') assert.equal(v.codec_name, 'png');
+      else assert.ok(Number(v.nb_frames || 0) > 1 || Number((await ffprobe(u.output)).format.duration) > 0.5, 'still moving');
+    });
+  }
+});
+
+test('SVG to raster images and PDF', async (t) => {
+  await tools.probe();
+  const sharp = require('sharp');
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="50"><rect width="100" height="50" fill="#ff0000"/><circle cx="25" cy="25" r="20" fill="#0000ff"/></svg>';
+  for (const target of ['png', 'jpg', 'webp', 'pdf']) {
+    await t.test(target, async () => {
+      const d = dirOf(`svg-${target}`);
+      fs.writeFileSync(path.join(d, 'shape.svg'), svg);
+      const u = await convert(path.join(d, 'shape.svg'), target);
+      assert.equal(u.state, 'completed', u.error);
+      if (target === 'pdf') {
+        if (has('pdfinfo')) assert.equal(await S.pdfPages(u.output), 1);
+        return;
+      }
+      const img = sharp(u.output);
+      const m = await img.metadata();
+      assert.ok(Math.abs(m.width / m.height - 2) < 0.02, `aspect ratio kept (${m.width}x${m.height}; rendering at 300 dpi rounds to whole pixels)`);
+      assert.ok(m.width >= 100, 'rendered at least at its own size');
+      const { data, info } = await img.raw().toBuffer({ resolveWithObject: true });
+      const px = (x, y) => [...data.subarray((y * info.width + x) * info.channels, (y * info.width + x) * info.channels + 3)];
+      const [r1, g1, b1] = px(Math.round(info.width * 0.9), Math.round(info.height / 2));
+      const [r2, , b2] = px(Math.round(info.width * 0.25), Math.round(info.height / 2));
+      assert.ok(r1 > 200 && g1 < 60 && b1 < 60, `red background kept (${r1},${g1},${b1})`);
+      assert.ok(b2 > 200 && r2 < 60, `blue circle kept (${r2},?,${b2})`);
     });
   }
 });

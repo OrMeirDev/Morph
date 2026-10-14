@@ -98,4 +98,78 @@ function sevenZip() {
   return copy;
 }
 
-module.exports = { tmpDir, makeZip, makeGif, makeWav, makePng, makePdf, sevenZip };
+// Reads every entry of a zip (stored or deflated) into a Map name -> Buffer. Enough to inspect
+// DOCX/XLSX/PPTX/ODF/EPUB output without a dependency.
+function readZip(file) {
+  const buf = fs.readFileSync(file);
+  let eocd = -1;
+  for (let i = buf.length - 22; i >= Math.max(0, buf.length - 65557); i--) if (buf.readUInt32LE(i) === 0x06054b50) { eocd = i; break; }
+  if (eocd < 0) throw new Error('not a zip');
+  const count = buf.readUInt16LE(eocd + 10);
+  let p = buf.readUInt32LE(eocd + 16);
+  const out = new Map();
+  for (let n = 0; n < count; n++) {
+    const method = buf.readUInt16LE(p + 10);
+    const csize = buf.readUInt32LE(p + 20);
+    const nameLen = buf.readUInt16LE(p + 28);
+    const extraLen = buf.readUInt16LE(p + 30);
+    const commentLen = buf.readUInt16LE(p + 32);
+    const local = buf.readUInt32LE(p + 42);
+    const name = buf.toString('utf8', p + 46, p + 46 + nameLen);
+    const dataStart = local + 30 + buf.readUInt16LE(local + 26) + buf.readUInt16LE(local + 28);
+    const data = buf.subarray(dataStart, dataStart + csize);
+    out.set(name, method === 8 ? zlib.inflateRawSync(data) : Buffer.from(data));
+    p += 46 + nameLen + extraLen + commentLen;
+  }
+  return out;
+}
+
+const zipText = (file, name) => { const e = readZip(file).get(name); if (!e) throw new Error(`${name} not in ${path.basename(file)}`); return e.toString('utf8'); };
+
+// Minimal OpenDocument packages (mimetype first and stored, as the spec requires).
+const ODF_NS = 'xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0" '
+  + 'xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" '
+  + 'xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0" xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0" '
+  + 'xmlns:svg="urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0" xmlns:presentation="urn:oasis:names:tc:opendocument:xmlns:presentation:1.0" '
+  + 'xmlns:of="urn:oasis:names:tc:opendocument:xmlns:of:1.2" office:version="1.3"';
+function makeOdf(file, mimetype, body, autoStyles = '') {
+  const content = `<?xml version="1.0" encoding="UTF-8"?><office:document-content ${ODF_NS}><office:automatic-styles>${autoStyles}</office:automatic-styles><office:body>${body}</office:body></office:document-content>`;
+  const manifest = '<?xml version="1.0" encoding="UTF-8"?><manifest:manifest xmlns:manifest="urn:oasis:names:tc:opendocument:xmlns:manifest:1.0" manifest:version="1.3">'
+    + `<manifest:file-entry manifest:full-path="/" manifest:media-type="${mimetype}"/><manifest:file-entry manifest:full-path="content.xml" manifest:media-type="text/xml"/></manifest:manifest>`;
+  return makeZip(file, [{ name: 'mimetype', data: mimetype }, { name: 'content.xml', data: content }, { name: 'META-INF/manifest.xml', data: manifest }]);
+}
+
+// The document fixture: a Hebrew right-to-left paragraph, bold text, a 2x2 table, and a page
+// break, so two pages. Strings are exported for assertions.
+const DOC = { hebrew: 'שלום עולם, זו בדיקת המרה', bold: 'BoldMarker', cells: ['CellA1', 'CellB1', 'תא2א', 'CellB2'], page2: 'SecondPageMarker' };
+function makeRichOdt(file) {
+  const styles = '<style:style style:name="Prtl" style:family="paragraph"><style:paragraph-properties style:writing-mode="rl-tb" fo:text-align="end"/></style:style>'
+    + '<style:style style:name="Tb" style:family="text"><style:text-properties fo:font-weight="bold"/></style:style>'
+    + '<style:style style:name="Pbreak" style:family="paragraph"><style:paragraph-properties fo:break-before="page"/></style:style>';
+  const cell = (t) => `<table:table-cell office:value-type="string"><text:p>${t}</text:p></table:table-cell>`;
+  const body = `<office:text><text:p text:style-name="Prtl">${DOC.hebrew}</text:p><text:p>Plain and <text:span text:style-name="Tb">${DOC.bold}</text:span></text:p>`
+    + `<table:table table:name="T1"><table:table-column table:number-columns-repeated="2"/><table:table-row>${cell(DOC.cells[0])}${cell(DOC.cells[1])}</table:table-row><table:table-row>${cell(DOC.cells[2])}${cell(DOC.cells[3])}</table:table-row></table:table>`
+    + `<text:p text:style-name="Pbreak">${DOC.page2}</text:p></office:text>`;
+  return makeOdf(file, 'application/vnd.oasis.opendocument.text', body, styles);
+}
+
+// The spreadsheet fixture: sheet "Data" with 3, 4 and =SUM(A1:A2) and a Hebrew label; a second
+// sheet "Other" that CSV export must leave out.
+const SHEET = { label: 'סכום', other: 'OtherSheetMarker' };
+function makeRichOds(file) {
+  const num = (v) => `<table:table-cell office:value-type="float" office:value="${v}"><text:p>${v}</text:p></table:table-cell>`;
+  const body = '<office:spreadsheet><table:table table:name="Data">'
+    + `<table:table-row>${num(3)}</table:table-row><table:table-row>${num(4)}</table:table-row>`
+    + `<table:table-row><table:table-cell table:formula="of:=SUM([.A1:.A2])" office:value-type="float" office:value="7"><text:p>7</text:p></table:table-cell><table:table-cell office:value-type="string"><text:p>${SHEET.label}</text:p></table:table-cell></table:table-row>`
+    + `</table:table><table:table table:name="Other"><table:table-row><table:table-cell office:value-type="string"><text:p>${SHEET.other}</text:p></table:table-cell></table:table-row></table:table></office:spreadsheet>`;
+  return makeOdf(file, 'application/vnd.oasis.opendocument.spreadsheet', body);
+}
+
+// The presentation fixture: three slides, each with its own marker text.
+const SLIDES = ['SlideOneMarker', 'SlideTwoMarker', 'שקף שלישי'];
+function makeRichOdp(file) {
+  const page = (t, i) => `<draw:page draw:name="p${i + 1}"><draw:frame svg:x="2cm" svg:y="2cm" svg:width="20cm" svg:height="3cm"><draw:text-box><text:p>${t}</text:p></draw:text-box></draw:frame></draw:page>`;
+  return makeOdf(file, 'application/vnd.oasis.opendocument.presentation', `<office:presentation>${SLIDES.map(page).join('')}</office:presentation>`);
+}
+
+module.exports = { tmpDir, makeZip, makeGif, makeWav, makePng, makePdf, sevenZip, readZip, zipText, makeRichOdt, makeRichOds, makeRichOdp, DOC, SHEET, SLIDES };

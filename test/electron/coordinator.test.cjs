@@ -12,6 +12,11 @@ const { tmpDir } = require('./helpers.cjs');
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
 const WEBP = Buffer.concat([Buffer.from('RIFF'), Buffer.alloc(4), Buffer.from('WEBPVP8 ')]);
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+// Like the real adapters (ProcessRunner, WorkerHost): an already-aborted signal rejects at once.
+const untilAborted = (signal) => new Promise((_, reject) => {
+  if (signal.aborted) reject(new CancelledError());
+  else signal.addEventListener('abort', () => reject(new CancelledError()));
+});
 
 function setup({ adapter, settings = {}, onLeftover = null } = {}) {
   const dir = tmpDir('coord');
@@ -174,7 +179,7 @@ test('an adapter that honours the signal ends cancelled, and a staged file is re
     adapter: {
       run: async (ctx) => {
         fs.writeFileSync(ctx.stagingFile('webp'), 'partial');
-        await new Promise((_, reject) => ctx.signal.addEventListener('abort', () => reject(new CancelledError())));
+        await untilAborted(ctx.signal);
       },
     },
   });
@@ -228,8 +233,22 @@ test('settings are snapshotted at enqueue', async () => {
   assert.equal(seen, 'small');
 });
 
+test('Stop while the workspace is being prepared never starts the engine', async () => {
+  let started = false;
+  const t = setup({ adapter: { run: async (ctx) => { started = true; return writeWebp(ctx); } } });
+  const id = t.addFile();
+  // Cancel the moment the job reaches 'preparing' (before the workspace awaits finish).
+  const emit = t.c.emit;
+  t.c.emit = (u) => { emit(u); if (u.state === 'preparing') setImmediate(() => t.c.cancel(id)); };
+  t.c.enqueue({ fileId: id, target: 'webp' });
+  await t.c.whenIdle();
+  assert.equal(finalState(t.updates, id), 'cancelled');
+  assert.equal(started, false);
+  assert.deepEqual(t.outputs(), []);
+});
+
 test('cancelAll stops everything and resolves when idle', async () => {
-  const t = setup({ adapter: { run: (ctx) => new Promise((_, reject) => ctx.signal.addEventListener('abort', () => reject(new CancelledError()))) } });
+  const t = setup({ adapter: { run: (ctx) => untilAborted(ctx.signal) } });
   const ids = [t.addFile(), t.addFile()];
   ids.forEach((id) => t.c.enqueue({ fileId: id, target: 'webp' }));
   await wait(20);
