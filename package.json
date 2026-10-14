@@ -11,7 +11,10 @@
     "start": "electron .",
     "dist": "vite build && electron-builder --win nsis --x64",
     "release": "vite build && electron-builder --win nsis --x64 --publish always",
-    "fetch-bin": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/fetch-bin.ps1"
+    "fetch-bin": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/fetch-bin.ps1",
+    "e2e:glass-menus": "vite build && electron e2e/glass-menus.cjs",
+    "e2e:glass-pickers": "vite build && electron e2e/glass-pickers.cjs",
+    "e2e:screenshots": "vite build && electron e2e/screenshots.cjs"
   },
   "repository": "github:OrMeirDev/Morph",
   "dependencies": {

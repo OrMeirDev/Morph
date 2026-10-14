@@ -1,0 +1,36 @@
+// Glass menus on Morph's units page (second monitor, throwaway profile).
+const { app, BrowserWindow, screen } = require('electron');
+const path = require('path');
+const fs = require('fs');
+const APP_DIR = path.join(__dirname, '..');
+const OUT_DIR = path.join(__dirname, 'output', path.basename(__filename, '.cjs'));
+fs.mkdirSync(OUT_DIR, { recursive: true });
+const dir = APP_DIR;
+const out = OUT_DIR;
+app.setPath('userData', fs.mkdtempSync(path.join(require('os').tmpdir(), 'menu-')));
+app.on('window-all-closed', () => {});
+app.whenReady().then(async () => {
+  require(path.join(dir, 'electron', 'main.cjs'));
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  setTimeout(() => app.exit(1), 90000);
+  let win; while (!(win = BrowserWindow.getAllWindows()[0])) await wait(30);
+  win.webContents.setZoomFactor(1); win.setContentSize(1347, 852);
+  const d = screen.getAllDisplays().find((x) => x.id !== screen.getPrimaryDisplay().id); if (d) win.setPosition(d.workArea.x + 40, d.workArea.y + 40);
+  win.show(); win.focus();
+  const js = (c) => win.webContents.executeJavaScript(c);
+  const shot = async (n) => { win.webContents.invalidate(); await wait(200); fs.writeFileSync(path.join(out, n), (await win.webContents.capturePage()).toPNG()); };
+  while (!(await js(`document.querySelectorAll('.nav-item').length`))) await wait(50);
+  await js(`document.querySelectorAll('.nav-item')[1].click()`); await wait(900);
+  const before = await js('[...document.querySelectorAll(".gfield")].map((x) => x.textContent).join(" | ")');
+  await js('document.querySelectorAll(".gfield")[0].click()'); await wait(450);
+  console.log('calendar days:', await js('document.querySelectorAll(".gcal-day").length'), 'month:', await js('document.querySelector(".gcal-head b").textContent'));
+  await shot('morph-date.png');
+  await js('[...document.querySelectorAll(".gcal-day:not(.out)")][19].click()'); await wait(400);
+  await js('document.querySelectorAll(".gfield")[1].click()'); await wait(450);
+  await shot('morph-time.png');
+  await js('[...document.querySelectorAll(".gtime-col")][0].querySelectorAll(".gtime-cell")[9].click()'); await wait(500);
+  await shot('morph-time-moved.png');
+  await js('[...document.querySelectorAll(".gtime-col")][1].querySelectorAll(".gtime-cell")[30].click()'); await wait(400);
+  console.log('before:', before, ' after:', await js('[...document.querySelectorAll(".gfield")].map((x) => x.textContent).join(" | ")'), ' popover closed:', !(await js('!!document.querySelector(".gpop")')));
+  app.exit(0);
+});
