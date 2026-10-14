@@ -22,3 +22,17 @@ test('every linear unit round-trips through every other unit of its category', (
     for (const a of Object.keys(units)) for (const b of Object.keys(units)) close(convertUnit(cat, convertUnit(cat, 3.7, a, b), b, a), 3.7);
   }
 });
+
+test('decimal and binary data units are distinct and labelled', () => {
+  close(convertUnit('data', 1, 'kb', 'b'), 1000);
+  close(convertUnit('data', 1, 'kib', 'b'), 1024);
+  close(convertUnit('data', 1, 'gib', 'mb'), 1073.741824);
+  assert.match(UNITS.data.units.kb[0], /1000/);
+  assert.match(UNITS.data.units.kib[0], /KiB/);
+});
+
+test('month and year are labelled as averages of the Gregorian calendar', () => {
+  assert.match(UNITS.time.units.mo[0], /ממוצע/);
+  close(convertUnit('time', 1, 'y', 'd'), 365.2425);
+  close(convertUnit('time', 12, 'mo', 'y'), 1);
+});
