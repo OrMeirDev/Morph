@@ -33,7 +33,7 @@ All fixtures are generated at test time (no binary fixtures in git).
 
 ## Results on the refactor branch (Linux, Node 22, Electron 44.5.1)
 
-- `npm test`: 127 passed, 0 failed, 0 skipped (with ffmpeg 6.1.1, Poppler 24.02, LibreOffice
+- `npm test`: 126 passed, 0 failed, 0 skipped (with ffmpeg 6.1.1, Poppler 24.02, LibreOffice
   24.2.7, 7-Zip 16.02; Calibre absent → its directions are reported not offered).
 - `e2e/conversion-flow.cjs`: 15/15.
 - Screenshots of every page: identical to the 1.0.3 build rendered on the same Electron, except the

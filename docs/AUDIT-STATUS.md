@@ -37,7 +37,7 @@ audited source was unchanged). Branch: `claude/dazzling-johnson-3zccoi`.
 | MOR-05 | **Fixed (application level)**; engine FS restriction pending | listing preflight (traversal, absolute, drive, links, encryption, size, ratio, count, depth, free space), post-extraction tree check, cleanup on cancel | `archivePolicy.test`, `engines.test` hostile zips; Windows 7z.exe run pending |
 | MOR-06 | **Fixed** | same-disk staging, signature validation, exclusive reservation + rename, journal-based recovery | `outputPublisher.test`, `coordinator.test`; FAT32/network share pending |
 | MOR-07 | **Fixed** for runtime; build-time exception recorded | Electron 44.5.1, sharp 0.35.5, file-type 21.3.4, electron-builder 26.17, Vite 7.3.6 | `npm audit --omit=dev` = 0; `docs/DEPENDENCIES.md` |
-| MOR-08 | **Partly fixed** | 127 tests, real-engine matrix, e2e flow, CI on Linux + Windows | CI has not run yet (needs a PR or manual dispatch); branch protection is an owner setting |
+| MOR-08 | **Partly fixed** | 126 tests, real-engine matrix, e2e flow, CI on Linux + Windows | CI has not run yet (needs a PR or manual dispatch); branch protection is an owner setting |
 | MOR-09 | **Fixed**; Windows tree kill to be confirmed | `ProcessRunner` deadlines, bounded logs, spawn errors, tree kill; update/quit wait for cancelled jobs | `processRunner.test` (descendant killed, POSIX here; runs on Windows CI) |
 | MOR-10 | **Partly fixed** | `bin-manifest.json` record/verify gates `dist`/`release`; version pins and `-RequirePinned` | pins must be chosen from a tested Windows build; signing not configured |
 | MOR-11 | **Fixed**; Windows long-path check pending | `OfficeProfileManager`: per-build profile, lock, ready marker, one rebuild | Office tests in `engines.test` |
