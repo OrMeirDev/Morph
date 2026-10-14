@@ -80,7 +80,12 @@ async function main() {
   for (let i = 0; i < 120 && fs.existsSync(exe); i++) await wait(500); // the uninstaller re-launches itself from %TEMP%
   check('uninstall removes the program', !fs.existsSync(exe));
   check('uninstall keeps settings and history', fs.existsSync(path.join(userData, 'settings.json')) && fs.existsSync(path.join(userData, 'history.json')));
-  check('uninstall removes the registration', displayVersion() === null);
+  // The uninstaller copies itself to %TEMP%, removes files, then the registry key last: wait for
+  // that end state instead of sampling it the moment Morph.exe is gone.
+  let left = displayVersion();
+  for (let i = 0; i < 60 && left !== null; i++) { await wait(1000); left = displayVersion(); }
+  const remaining = fs.existsSync(installDir) ? fs.readdirSync(installDir) : [];
+  check('uninstall removes the registration', left === null, `registered after 60 s: ${left}; left in the install folder: ${remaining.join(', ') || 'nothing'}`);
 }
 
 main().catch((e) => check('installer run', false, e.stack)).finally(() => {
