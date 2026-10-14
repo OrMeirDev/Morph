@@ -127,11 +127,18 @@ jobs:
           ! grep -E "# (no 7-Zip|no ffmpeg|no poppler|no LibreOffice|no Calibre|needs Windows|MORPH_TEST_)" test.log
       - name: The engines did not change their own files
         run: node scripts/bin-manifest.cjs verify --out bin-manifest.ci.json
-      - name: Build the app and the installer (unsigned, version 1.0.4-ci)
+      - name: Build the app and the installer (version 1.0.4-ci; signed only if a certificate is configured)
         shell: bash
+        env:
+          # electron-builder signs when these exist (owner action, docs/RELEASING.md); absent = unsigned.
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
         run: |
           npx vite build
           npx electron-builder --win nsis --x64 --publish never -c.extraMetadata.version=1.0.4-ci
+      - name: Code signature (required once MORPH_PUBLISHER is set; reported as pending before)
+        shell: bash
+        run: node e2e/signature-check.cjs release/Morph-Setup-1.0.4-ci.exe release/win-unpacked/Morph.exe ${{ vars.MORPH_PUBLISHER && format('--publisher "{0}"', vars.MORPH_PUBLISHER) || '' }} --report signature.json
       - name: Packaged app smoke test (win-unpacked)
         run: node e2e/packaged-smoke.cjs release/win-unpacked/Morph.exe --expect-version 1.0.4-ci --report smoke.json
       - name: Download the previous release (1.0.3)
@@ -151,5 +158,6 @@ jobs:
             bin/ENGINES.json
             test.log
             smoke.json
+            signature.json
             installer.json
           if-no-files-found: warn
