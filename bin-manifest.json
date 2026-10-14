@@ -2,7 +2,7 @@
   "version": 1,
   "recordedAt": "2026-10-14T17:49:29.050Z",
   "tools": {},
-  "fileCount": 12530,
+  "fileCount": 12529,
   "files": {
     "7zip/7z.dll": {
       "size": 1906688,
@@ -27404,10 +27404,6 @@
       "size": 71694,
       "sha256": "87950b0a54d20dfe25a58d87d665ff070457b1d7eb2ece4f129d314f75c01600"
     },
-    "libreoffice/libreoffice-26.2.6.3-LibreOffice_26.2.6.3_Win_x86-64.msi": {
-      "size": 19849216,
-      "sha256": "b621094a54f6086783e9e36a91bb9bd44479696655ce4f7881b0fed8030bfc7a"
-    },
     "libreoffice/license.txt": {
       "size": 512711,
       "sha256": "4a4424cca75f2c723dfbc04c0394a70e97e37badce72700f3fb38701966ac344"
@@ -50124,5 +50120,6 @@
       "size": 657408,
       "sha256": "fcc1dc71b7df5489e37a78abab9c31d763570d55e93c67f388058c41c0d7b8df"
     }
-  }
+  },
+  "note": "Recorded by CI run 38609375299; the administrative-install package copy (libreoffice/*.msi) removed by hand after fetch-engines learned to strip it (commit message has the details)."
 }

@@ -137,10 +137,24 @@ function findFile(dir, name) {
   return null;
 }
 
+// An administrative install (msiexec /a) leaves a copy of the package at the top of TARGETDIR, with
+// its properties rewritten on every run. It is not part of the engine: shipping it would add ~20 MB
+// and make the payload differ from run to run, so it is removed before anything is copied.
+function stripAdminImage(dir) {
+  const removed = [];
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (e.isFile() && /\.msi$/i.test(e.name)) { fs.rmSync(path.join(dir, e.name), { force: true }); removed.push(e.name); }
+  }
+  return removed;
+}
+
 function extract(file, type, dest) {
   if (process.platform !== 'win32') throw new FetchError('extracting engines needs Windows (msiexec); use --download-only elsewhere');
   fs.mkdirSync(dest, { recursive: true });
-  if (type === 'msi') run('msiexec.exe', ['/a', file, '/qn', `TARGETDIR=${dest}`]);
+  if (type === 'msi') {
+    run('msiexec.exe', ['/a', file, '/qn', `TARGETDIR=${dest}`]);
+    stripAdminImage(dest);
+  }
   else if (type === 'zip') run('tar.exe', ['-xf', file, '-C', dest]); // bsdtar ships with Windows 10+
   else throw new FetchError(`unknown download type ${type}`);
 }
@@ -251,4 +265,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { validateLock, obtain, download, sha256File, pickRelease, trimLibreOffice, FetchError, main };
+module.exports = { validateLock, obtain, download, sha256File, pickRelease, trimLibreOffice, stripAdminImage, FetchError, main };

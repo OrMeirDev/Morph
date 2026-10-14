@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const http = require('http');
 const crypto = require('crypto');
-const { validateLock, obtain, pickRelease, trimLibreOffice } = require('../../scripts/fetch-engines.cjs');
+const { validateLock, obtain, pickRelease, trimLibreOffice, stripAdminImage } = require('../../scripts/fetch-engines.cjs');
 const { tmpDir } = require('./helpers.cjs');
 
 const sha = (b) => crypto.createHash('sha256').update(b).digest('hex');
@@ -110,4 +110,21 @@ test('LibreOffice trimming keeps English and Hebrew and the default icon theme',
     'share/registry/Langpack-en-US.xcd', 'share/registry/Langpack-he.xcd', 'share/registry/main.xcd', 'share/config/images_colibre.zip', 'program/soffice.com']) assert.ok(exists(kept), kept);
   for (const gone of ['program/resource/fr', 'share/extensions/dict-fr', 'share/registry/res/fcfg_langpack_fr.xcd', 'share/registry/Langpack-de.xcd', 'share/config/images_sifr.zip']) assert.ok(!exists(gone), gone);
   assert.ok(exists('share/extensions'), 'empty extensions folder kept');
+});
+
+test('the copy of the package an administrative install leaves at the top is removed, nothing else', () => {
+  const x = tmpDir('adm');
+  fs.writeFileSync(path.join(x, 'LibreOffice_26.2.6.3_Win_x86-64.msi'), 'admin image copy');
+  fs.mkdirSync(path.join(x, 'program'));
+  fs.writeFileSync(path.join(x, 'program', 'soffice.exe'), 'x');
+  fs.writeFileSync(path.join(x, 'program', 'inner.msi'), 'part of the engine, kept');
+  assert.deepEqual(stripAdminImage(x), ['LibreOffice_26.2.6.3_Win_x86-64.msi']);
+  assert.deepEqual(fs.readdirSync(x), ['program']);
+  assert.deepEqual(fs.readdirSync(path.join(x, 'program')).sort(), ['inner.msi', 'soffice.exe']);
+});
+
+test('the committed payload manifest contains no administrative-install package copy', () => {
+  const m = JSON.parse(fs.readFileSync(path.join(__dirname, '../../bin-manifest.json'), 'utf8'));
+  assert.deepEqual(Object.keys(m.files).filter((k) => /^[^/]+\/[^/]+\.msi$/i.test(k)), []);
+  assert.equal(m.fileCount, Object.keys(m.files).length);
 });
