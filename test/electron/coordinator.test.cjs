@@ -12,6 +12,15 @@ const { tmpDir } = require('./helpers.cjs');
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
 const WEBP = Buffer.concat([Buffer.from('RIFF'), Buffer.alloc(4), Buffer.from('WEBPVP8 ')]);
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+// A deterministic meeting point: the adapter calls hit() when it starts and waits for open();
+// the test awaits `reached` instead of guessing a delay (slow CI runners broke fixed waits).
+function gate() {
+  let open;
+  let hit;
+  const opened = new Promise((r) => { open = r; });
+  const reached = new Promise((r) => { hit = r; });
+  return { opened, reached, open, hit };
+}
 // Like the real adapters (ProcessRunner, WorkerHost): an already-aborted signal rejects at once.
 const untilAborted = (signal) => new Promise((_, reject) => {
   if (signal.aborted) reject(new CancelledError());
@@ -83,15 +92,15 @@ test('a conversion publishes a verified output and records history after publica
 });
 
 test('commands are validated: unknown file, unknown direction, duplicate active job', async () => {
-  let release;
-  const t = setup({ adapter: { run: async (ctx) => { await new Promise((r) => { release = r; }); return writeWebp(ctx); } } });
+  const g = gate();
+  const t = setup({ adapter: { run: async (ctx) => { g.hit(); await g.opened; return writeWebp(ctx); } } });
   const id = t.addFile();
   assert.deepEqual(t.c.enqueue({ fileId: 'nope', target: 'webp' }), { ok: false, error: 'unknown-file' });
   assert.deepEqual(t.c.enqueue({ fileId: id, target: 'docx' }), { ok: false, error: 'target-not-allowed' });
   assert.equal(t.c.enqueue({ fileId: id, target: 'webp' }).ok, true);
   assert.deepEqual(t.c.enqueue({ fileId: id, target: 'webp' }), { ok: false, error: 'already-active' });
-  await wait(30);
-  release();
+  await g.reached;
+  g.open();
   await t.c.whenIdle();
   assert.equal(t.outputs().length, 1, 'one job, one output');
 });
@@ -111,15 +120,15 @@ test('one job at a time, in arrival order', async () => {
 
 test('cancel before start: removed from the queue, never runs', async () => {
   let ran = 0;
-  let release;
-  const t = setup({ adapter: { run: async (ctx) => { ran++; if (ran === 1) await new Promise((r) => { release = r; }); return writeWebp(ctx); } } });
+  const g = gate();
+  const t = setup({ adapter: { run: async (ctx) => { ran++; if (ran === 1) { g.hit(); await g.opened; } return writeWebp(ctx); } } });
   const a = t.addFile();
   const b = t.addFile();
   t.c.enqueue({ fileId: a, target: 'webp' });
   t.c.enqueue({ fileId: b, target: 'webp' });
   assert.equal(t.c.cancel(b), true);
-  await wait(20);
-  release();
+  await g.reached;
+  g.open();
   await t.c.whenIdle();
   assert.equal(ran, 1);
   assert.equal(finalState(t.updates, b), 'cancelled');
@@ -128,18 +137,21 @@ test('cancel before start: removed from the queue, never runs', async () => {
 
 test('cancel during work that ignores the signal: no output, no history, next job runs (MOR-01)', async () => {
   let calls = 0;
+  const g = gate();
   const t = setup({
     adapter: {
-      // Simulates a library call that cannot be interrupted and finishes after Stop.
-      run: async (ctx) => { calls++; if (calls === 1) await wait(60); return writeWebp(ctx); },
+      // Simulates a library call that cannot be interrupted: it ignores the signal and finishes
+      // only after Stop was pressed.
+      run: async (ctx) => { calls++; if (calls === 1) { g.hit(); await g.opened; } return writeWebp(ctx); },
     },
   });
   const a = t.addFile();
   const b = t.addFile();
   t.c.enqueue({ fileId: a, target: 'webp' });
   t.c.enqueue({ fileId: b, target: 'webp' });
-  await wait(15);
+  await g.reached;
   t.c.cancel(a);
+  g.open();
   await t.c.whenIdle();
   assert.equal(finalState(t.updates, a), 'cancelled');
   assert.equal(finalState(t.updates, b), 'completed');
@@ -175,17 +187,19 @@ test('Stop during publication, after the name is reserved but before the final r
 });
 
 test('an adapter that honours the signal ends cancelled, and a staged file is removed', async () => {
+  const staged = gate();
   const t = setup({
     adapter: {
       run: async (ctx) => {
         fs.writeFileSync(ctx.stagingFile('webp'), 'partial');
+        staged.hit();
         await untilAborted(ctx.signal);
       },
     },
   });
   const id = t.addFile();
   t.c.enqueue({ fileId: id, target: 'webp' });
-  await wait(20);
+  await staged.reached;
   t.c.cancel(id);
   await t.c.whenIdle();
   assert.equal(finalState(t.updates, id), 'cancelled');
@@ -248,10 +262,11 @@ test('Stop while the workspace is being prepared never starts the engine', async
 });
 
 test('cancelAll stops everything and resolves when idle', async () => {
-  const t = setup({ adapter: { run: (ctx) => untilAborted(ctx.signal) } });
+  const started = gate();
+  const t = setup({ adapter: { run: (ctx) => { started.hit(); return untilAborted(ctx.signal); } } });
   const ids = [t.addFile(), t.addFile()];
   ids.forEach((id) => t.c.enqueue({ fileId: id, target: 'webp' }));
-  await wait(20);
+  await started.reached; // one running, one still queued
   await t.c.cancelAll();
   assert.deepEqual(ids.map((id) => finalState(t.updates, id)), ['cancelled', 'cancelled']);
   assert.deepEqual(t.outputs(), []);
