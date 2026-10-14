@@ -30,9 +30,10 @@ export default function AppShell() {
     return api.onAppUpdate(setAppUpdate);
   }, []);
 
+  // Optimistic, then corrected by main's validated result (or its current values on refusal).
   const saveSettings = (patch) => {
     setSettings((s) => ({ ...s, ...patch }));
-    api.setSettings(patch);
+    api.setSettings(patch).then(setSettings, () => api.getSettings().then(setSettings));
   };
 
   return (

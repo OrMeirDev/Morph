@@ -6,19 +6,13 @@ import HistoryRow from './HistoryRow.jsx';
 
 export default function HistoryPage() {
   const [items, setItems] = useState([]);
-  const [missing, setMissing] = useState({});
   const [q, setQ] = useState('');
 
-  const load = async () => {
-    const list = await api.getHistory();
-    setItems(list);
-    const flags = {};
-    await Promise.all(list.map(async (h, i) => { flags[i] = !(await api.fileExists(h.output)); }));
-    setMissing(flags);
-  };
+  // Entries come with `exists` checked in main; the renderer never probes the filesystem.
+  const load = async () => setItems(await api.getHistory());
   useEffect(() => { load(); }, []);
 
-  const shown = useMemo(() => items.map((h, i) => ({ ...h, i })).filter((h) => !q || h.name.toLowerCase().includes(q.toLowerCase())), [items, q]);
+  const shown = useMemo(() => items.filter((h) => !q || h.name.toLowerCase().includes(q.toLowerCase())), [items, q]);
 
   const clear = async () => {
     if (!window.confirm('למחוק את כל ההיסטוריה? הקבצים עצמם לא יימחקו.')) return;
@@ -37,7 +31,7 @@ export default function HistoryPage() {
       <section className="list">
         {items.length === 0 && <div className="empty"><HistoryIcon size={26} /><div>עוד לא המרת קבצים. המרות שיסתיימו יופיעו כאן.</div></div>}
         {shown.map((h) => (
-          <HistoryRow key={h.i} entry={h} missing={missing[h.i]} onOpen={() => api.openFile(h.output)} onShow={() => api.showFile(h.output)} />
+          <HistoryRow key={h.id} entry={h} missing={!h.exists} onOpen={() => api.openOutput(h.output)} onShow={() => api.showOutput(h.output)} />
         ))}
       </section>
     </>

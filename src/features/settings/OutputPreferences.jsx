@@ -18,7 +18,7 @@ export default function OutputPreferences({ settings, onChange }) {
           <button className={settings.outputMode === 'folder' ? 'on' : ''} onClick={() => onChange({ outputMode: 'folder' })}>תיקייה קבועה</button>
         </div>
         {settings.outputMode === 'folder' && <button className="btn-ghost" onClick={chooseFolder}>שנה תיקייה</button>}
-        {settings.outputMode === 'folder' && <button className="btn-ghost" onClick={() => api.openFolder(settings.folder)}>פתח</button>}
+        {settings.outputMode === 'folder' && <button className="btn-ghost" onClick={() => api.openFolder()}>פתח</button>}
       </div>
     </div>
   );

@@ -1,14 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../../services/morphApi.js';
-import { baseName } from '../../presentation/formatters.js';
-import { STARTABLE, applyGroupTarget, withTarget, withoutFinished } from './conversionSelectors.js';
+import { ACTIVE, STARTABLE, applyGroupTarget, withTarget, withoutFinished } from './conversionSelectors.js';
+import { applyJobUpdate, rowFromDetection } from './jobStates.js';
 
-let nextId = 1;
-
-// The conversion list and its commands.
+// The conversion list as the user sees it. Jobs themselves are owned by the coordinator in the
+// main process: this hook sends commands (enqueue, cancel) and mirrors the job updates it reports.
 export default function useConversionQueue() {
   const [items, setItems] = useState([]);
-  const [running, setRunning] = useState(false);
   const itemsRef = useRef(items);
   itemsRef.current = items;
 
@@ -18,52 +16,48 @@ export default function useConversionQueue() {
 
   useEffect(() => {
     if (!api) return undefined;
-    return api.onProgress(({ id, percent }) => update(id, { progress: percent }));
-  }, [update]);
-
-  const addDetected = useCallback((detected) => {
-    setItems((list) => [
-      ...list,
-      ...detected.map((d) => (d.ok
-        ? { id: nextId++, path: d.path, kind: d.kind, label: d.label, ext: d.ext, size: d.size, targets: d.targets, target: d.defaultTarget, renamed: d.renamed, status: 'ready', progress: null }
-        : { id: nextId++, path: d.path, size: d.size, targets: [], status: 'unsupported' })),
-    ]);
+    return api.onJobUpdate((u) => setItems((list) => list.map((x) => (x.id === u.fileId ? applyJobUpdate(x, u) : x))));
   }, []);
 
-  // Runner: one conversion at a time, in list order.
-  useEffect(() => {
-    if (!running || !api) return;
-    if (items.some((x) => x.status === 'converting')) return;
-    const next = items.find((x) => x.status === 'queued');
-    if (!next) { setRunning(false); return; }
-    update(next.id, { status: 'converting', progress: null, error: null });
-    api.start({ id: next.id, input: next.path, kind: next.kind, ext: next.ext, target: next.target }).then((r) => {
-      if (r.ok) {
-        update(next.id, { status: 'done', output: r.output, progress: 100 });
-        api.addHistory({ name: baseName(next.path), from: next.ext, to: next.target, output: r.output });
-      } else if (r.cancelled) {
-        update(next.id, { status: 'cancelled', progress: null });
-      } else {
-        update(next.id, { status: 'error', error: r.error, progress: null });
-      }
-    });
-  }, [items, running, update]);
+  const addDetected = useCallback((detected) => {
+    setItems((list) => [...list, ...detected.map(rowFromDetection)]);
+  }, []);
+
+  // Every command ends in a definite row state, even when the IPC call itself fails.
+  const start = useCallback(async (id) => {
+    const item = itemsRef.current.find((x) => x.id === id);
+    if (!item || !STARTABLE.includes(item.status)) return;
+    update(id, { status: 'queued', error: null });
+    try {
+      const r = await api.enqueue(id, item.target);
+      if (!r?.ok) update(id, { status: 'error', error: r?.error || 'enqueue-failed', progress: null });
+    } catch (e) {
+      update(id, { status: 'error', error: String(e?.message || e), progress: null });
+    }
+  }, [update]);
 
   const actions = {
     setTarget: (id, target) => update(id, (x) => withTarget(x, target)),
-    convertOne: (id) => { update(id, { status: 'queued', error: null }); setRunning(true); },
-    stop: (id) => api.stop(id),
-    remove: (id) => setItems((list) => list.filter((x) => x.id !== id)),
-    openOutput: (item) => api.openFile(item.output),
-    showOutput: (item) => api.showFile(item.output),
+    convertOne: (id) => start(id),
+    stop: (id) => api.cancel(id).catch(() => {}),
+    remove: (id) => {
+      setItems((list) => list.filter((x) => x.id !== id));
+      if (!String(id).startsWith('x-')) api.releaseFile(id).catch(() => {});
+    },
+    openOutput: (item) => api.openOutput(item.output),
+    showOutput: (item) => api.showOutput(item.output),
   };
 
-  const convertAll = () => {
-    setItems((list) => list.map((x) => (STARTABLE.includes(x.status) ? { ...x, status: 'queued', error: null } : x)));
-    setRunning(true);
+  // In list order; the coordinator runs them one at a time in the order they arrive.
+  const convertAll = async () => {
+    for (const x of itemsRef.current.filter((i) => STARTABLE.includes(i.status))) await start(x.id);
   };
-  const clearDone = () => setItems(withoutFinished);
+  const clearDone = () => {
+    for (const x of itemsRef.current) if (x.status === 'done') api.releaseFile(x.id).catch(() => {});
+    setItems(withoutFinished);
+  };
   const setGroupTarget = (kind, target) => setItems((list) => applyGroupTarget(list, kind, target));
+  const running = items.some((x) => ACTIVE.includes(x.status));
 
   return { items, itemsRef, running, actions, convertAll, clearDone, setGroupTarget, addDetected };
 }
