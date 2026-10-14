@@ -26,7 +26,18 @@ const newVersion = opt('--new-version');
 const port = Number(opt('--port') || 8765);
 const CDP_PORT = 9341;
 const checks = [];
-const check = (name, ok, detail = '') => { checks.push({ name, ok: !!ok, detail: typeof detail === 'string' ? detail : JSON.stringify(detail) }); };
+const reportFile = opt('--report');
+// Every check is printed and saved the moment it is made, so a run that is stopped or hangs still
+// leaves its evidence (the CI step has its own time limit).
+const check = (name, ok, detail = '') => {
+  const c = { name, ok: !!ok, detail: typeof detail === 'string' ? detail : JSON.stringify(detail) };
+  checks.push(c);
+  console.log(`${c.ok ? 'PASS' : 'FAIL'} ${name}${c.detail ? ` :: ${c.detail.slice(0, 400)}` : ''}`);
+  if (reportFile) fs.writeFileSync(reportFile, JSON.stringify({ partial: true, checks }, null, 2));
+};
+const step = (msg) => console.log(`[${new Date().toISOString().slice(11, 19)}] ${msg}`);
+// No wait on the app may be unbounded.
+const within = (p, ms, what) => Promise.race([p, new Promise((_, j) => setTimeout(() => j(new Error(`timeout after ${ms / 1000} s: ${what}`)), ms))]);
 
 const installDir = path.join(process.env.LOCALAPPDATA, 'Programs', 'Morph');
 const exe = path.join(installDir, 'Morph.exe');
@@ -79,7 +90,7 @@ async function main() {
   const feed = await serveFeed();
 
   // 1. The old build, installed, with user settings (v1 written by the app itself later) and history.
-  check('old build installs silently', spawnSync(oldSetup, ['/S'], { stdio: 'inherit' }).status === 0 && fs.existsSync(exe));
+  check('old build installs silently', spawnSync(oldSetup, ['/S'], { stdio: 'inherit', timeout: 300000 }).status === 0 && fs.existsSync(exe));
   check('old version registered', displayVersion() === oldVersion, displayVersion());
   const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'morph-update-out-'));
   fs.mkdirSync(userData, { recursive: true });
@@ -87,18 +98,21 @@ async function main() {
   fs.writeFileSync(path.join(userData, 'settings.json'), JSON.stringify(settings));
   fs.writeFileSync(path.join(userData, 'history.json'), JSON.stringify([{ name: 'before-update.png', from: 'png', to: 'jpg', output: path.join(outDir, 'before-update.jpg'), convertedAt: '2026-02-03T04:05:06.000Z' }]));
 
+  step('old build installed; starting it');
   // 2. Run it and drive the update through the page's own API (what the update banner calls).
   const app = spawn(exe, [`--remote-debugging-port=${CDP_PORT}`], { stdio: 'ignore', detached: true });
   app.unref();
   const page = await findPage(CDP_PORT, { timeoutMs: 90000 });
   check('old build runs', page, page?.url);
   if (!page) return;
-  const c = await connect(page.webSocketDebuggerUrl);
+  const c0 = await connect(page.webSocketDebuggerUrl);
+  const c = { ...c0, evaluate: (expr, ms = 120000) => within(c0.evaluate(expr), ms, expr.slice(0, 60)) };
   check('running version before the update', (await c.evaluate('window.morph.appVersion()')) === oldVersion);
   await c.evaluate(`window.__updates = []; window.morph.onAppUpdate((s) => window.__updates.push(s)); true`);
   const found = await c.evaluate('window.morph.checkAppUpdate()');
   const available = await until(() => c.evaluate(`window.__updates.find((s) => s.state === 'available') || null`), 120000);
   check('update found on the feed', found && available?.version === newVersion, available);
+  step('downloading the update');
   await c.evaluate('window.morph.downloadAppUpdate()');
   const ready = await until(() => c.evaluate(`window.__updates.find((s) => s.state === 'ready' || s.state === 'error') || null`), 900000, 2000);
   check('update downloaded and verified by electron-updater', ready?.state === 'ready' && ready.version === newVersion, ready);
@@ -113,12 +127,17 @@ async function main() {
   const loBin = path.join(installDir, 'resources', 'bin', 'libreoffice');
   const busy = await until(() => (processesUnder(loBin).some((p) => /soffice\.bin/i.test(p)) ? processesUnder(loBin) : null), 120000, 200);
   check('a LibreOffice conversion is running at update time', busy, busy);
-  const installCall = c.evaluate('window.morph.installAppUpdate()').catch((e) => e.message); // the app quits during the call
+  step('pressing "restart to update" while LibreOffice converts');
+  const installCall = c.evaluate('window.morph.installAppUpdate()', 60000).catch((e) => e.message); // the app quits during the call
   const jobStates = await until(() => c.evaluate('window.__jobs.slice()').then((j) => (j.includes('cancelled') ? j : null)).catch(() => null), 30000, 200);
   check('the running conversion is cancelled before the app quits', jobStates?.includes('cancelled'), jobStates);
-  await installCall;
+  const installResult = await installCall;
+  step(`installAppUpdate returned: ${installResult}`);
+  const quit = await until(() => (processesUnder(installDir).some((p) => /Morph\.exe/i.test(p)) ? null : true), 60000, 1000);
+  check('the app quit to install the update', quit === true, installResult);
   c.close();
 
+  step('waiting for the silent install and the restart');
   // 4. The installer runs silently, then the app starts again by itself.
   const updated = await until(() => (displayVersion() === newVersion ? newVersion : null), 900000, 3000);
   check('new version installed and registered by the update', updated === newVersion, displayVersion());
@@ -137,15 +156,16 @@ async function main() {
   try { execFileSync('taskkill', ['/IM', 'Morph.exe', '/T', '/F'], { stdio: 'ignore' }); } catch { /* none */ }
   await wait(3000);
   const report = path.join(os.tmpdir(), 'morph-updated-smoke.json');
+  step('packaged smoke test of the updated app');
   const smoke = spawnSync(process.execPath, [path.join(__dirname, 'packaged-smoke.cjs'), exe, '--appdata', process.env.APPDATA,
-    '--expect-version', newVersion, '--expect-settings', JSON.stringify(settings), '--expect-history', '1', '--report', report], { encoding: 'utf8' });
+    '--expect-version', newVersion, '--expect-settings', JSON.stringify(settings), '--expect-history', '1', '--report', report], { encoding: 'utf8', timeout: 600000 });
   process.stdout.write(smoke.stdout || '');
   const r = fs.existsSync(report) ? JSON.parse(fs.readFileSync(report, 'utf8')) : null;
   check('updated app: version, settings, history and every engine (packaged smoke)', smoke.status === 0, r ? `${r.passed} passed, ${r.failed} failed` : smoke.stderr);
   const history = JSON.parse(fs.readFileSync(path.join(userData, 'history.json'), 'utf8'));
   check('history kept and in the versioned format', history.version === 1 && history.entries.some((e) => e.name === 'before-update.png'));
 
-  spawnSync(path.join(installDir, 'Uninstall Morph.exe'), ['/S'], { stdio: 'inherit' });
+  spawnSync(path.join(installDir, 'Uninstall Morph.exe'), ['/S'], { stdio: 'inherit', timeout: 300000 });
   await until(() => !fs.existsSync(exe), 60000);
   feed.server.close();
 }
@@ -153,7 +173,8 @@ async function main() {
 main().catch((e) => check('auto-update run', false, e.stack)).finally(() => {
   const failed = checks.filter((x) => !x.ok);
   const report = { passed: checks.length - failed.length, failed: failed.length, checks };
-  if (opt('--report')) fs.writeFileSync(opt('--report'), JSON.stringify(report, null, 2));
+  if (reportFile) fs.writeFileSync(reportFile, JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report, null, 2));
+  try { execFileSync('taskkill', ['/IM', 'Morph.exe', '/T', '/F'], { stdio: 'ignore' }); } catch { /* none left */ }
   process.exit(failed.length ? 1 : 0);
 });

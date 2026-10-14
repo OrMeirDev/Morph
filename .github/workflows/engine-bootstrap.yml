@@ -1,0 +1,44 @@
+# Maintenance only (run by hand): resolve and test a new engine payload before pinning it.
+# Regular CI never resolves anything; it fetches with --require-pinned. Procedure: docs/RELEASING.md §2.
+#  1. In a branch, edit scripts/engines.lock.json: the new URL without "sha256", or a "resolve" entry.
+#  2. Run this workflow on that branch (Actions → Engine bootstrap → Run workflow).
+#  3. Review the artifact (engines.resolved.json, bin-manifest.ci.json, test.log), then commit the
+#     resolved hashes and the manifest; the regular CI must then pass in strict mode.
+name: Engine bootstrap (maintenance)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  resolve-and-test:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    # No MORPH_REQUIRE_PAYLOAD: the file-system variants (FAT32/exFAT/SMB) are set up only by the
+    # regular payload job; the rest of test/windows runs because bin/ is present.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts --no-fund --no-audit
+      - name: Resolve unpinned engines, download, record hashes (not strict)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/fetch-engines.cjs --resolve-out engines.resolved.json
+      - run: node scripts/bin-manifest.cjs record --out bin-manifest.ci.json
+      - name: Tests against the resolved payload
+        shell: bash
+        run: npm test 2>&1 | tee test.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: engine-bootstrap
+          path: |
+            engines.resolved.json
+            bin-manifest.ci.json
+            bin/ENGINES.json
+            test.log

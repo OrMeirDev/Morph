@@ -89,14 +89,29 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --ignore-scripts --no-fund --no-audit
-      - uses: actions/cache@v4
+      # Restore and save are separate so the verified downloads are cached even when a later step
+      # fails; every cached file is hash-checked again by fetch-engines before use.
+      - uses: actions/cache/restore@v4
+        id: engines-cache
         with:
           path: .cache/engines
           key: engines-${{ hashFiles('scripts/engines.lock.json') }}
       - name: Fetch the pinned engine payload (every download hash-checked, fresh or cached)
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
         run: node scripts/fetch-engines.cjs --require-pinned --resolve-out engines.resolved.json
+      - uses: actions/cache/save@v4
+        if: steps.engines-cache.outputs.cache-hit != 'true'
+        with:
+          path: .cache/engines
+          key: engines-${{ hashFiles('scripts/engines.lock.json') }}
+      - name: A tampered cached download is refused (real 7-Zip package, one byte appended)
+        shell: bash
+        run: |
+          mkdir -p tampered && cp .cache/engines/7zip-* tampered/ && printf 'x' >> tampered/7zip-*
+          if node scripts/fetch-engines.cjs --require-pinned --download-only --only 7zip --cache tampered 2> tamper.err; then
+            echo "::error::a tampered cached package was accepted"; exit 1
+          fi
+          cat tamper.err
+          grep -q "does not match the lock" tamper.err
       - name: Record the payload (bin-manifest)
         run: node scripts/bin-manifest.cjs record --out bin-manifest.ci.json
       - name: Payload matches the committed bin-manifest.json
@@ -155,6 +170,7 @@ jobs:
           done
           ls -la release-update-old release-update-new
       - name: In-app auto-update from the local feed, during a running conversion
+        timeout-minutes: 50
         run: node e2e/autoupdate-check.cjs release-update-old/Morph-Setup-1.0.4.exe release-update-new --old-version 1.0.4 --new-version 1.0.5 --port 8765 --report autoupdate.json
       - name: Evidence
         if: always()

@@ -19,11 +19,13 @@ Rulesets → New branch ruleset, target `main` (default branch), enable:
 
 - `scripts/engines.lock.json` holds the exact URL and SHA-256 of every engine download. Change it only
   in a PR whose `Bundled engines, packaged app and installer (Windows)` job passes.
-- To move an engine to a new version: put the new URL in the lock without `sha256` (or a
-  `download.resolve` entry for a GitHub release), let the Windows payload job run in non-strict mode
-  (`node scripts/fetch-engines.cjs --resolve-out engines.resolved.json`), review the hash it computed
-  and the tests it ran, then commit the hash and the job's `bin-manifest.ci.json` as
-  `bin-manifest.json`. CI then fetches with `--require-pinned` and verifies `bin/` byte for byte.
+- To move an engine to a new version (maintenance, by hand): in a branch, put the new URL in the lock
+  without `sha256` (or a `download.resolve` entry for a GitHub release), run the **Engine bootstrap
+  (maintenance)** workflow (`.github/workflows/engine-bootstrap.yml`, manual only) on that branch,
+  review its artifact (resolved hashes, payload manifest, test log), then commit the hashes and the
+  manifest. Regular CI never resolves: it fetches with `--require-pinned`, caches only verified
+  downloads, re-checks every cached file, proves a tampered package is refused, and verifies `bin/`
+  byte for byte against `bin-manifest.json` before and after the tests.
 - Locally: `npm run fetch-bin` (= `node scripts/fetch-engines.cjs --require-pinned`, Windows) then
   `npm run bin:verify`. A missing, changed or unexpected file, a cached download that differs from
   the lock, or an unpinned engine stops with a message.
