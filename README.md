@@ -34,7 +34,7 @@ Per-row "convert only this" and "convert all", a per-kind shortcut ("convert all
 
 ```bash
 npm install
-npm run fetch-bin   # downloads ffmpeg, 7-Zip, Poppler, LibreOffice and Calibre into bin/ (not in git: too large)
+npm run fetch-bin   # Windows: the pinned, hash-checked ffmpeg, 7-Zip, Poppler, LibreOffice and Calibre into bin/ (scripts/engines.lock.json)
 npm run dev         # app with hot reload
 npm run check       # module-boundary rules, all tests (incl. the real engines found), build
 npm run e2e:flow    # the conversion flow in a real Electron window

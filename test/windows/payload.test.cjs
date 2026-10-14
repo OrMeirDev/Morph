@@ -138,6 +138,30 @@ test('Office profile: a first start cancelled midway, then a damaged profile, bo
   } finally { S.stop(); }
 });
 
+test('Office profile path at the 100-character limit works; over it falls back to the short path', opts, async () => {
+  const S = createStack('win-lo-limit');
+  try {
+    await S.tools.probe();
+    const { MAX_PROFILE_PATH } = require('../../electron/infra/OfficeProfileManager.cjs');
+    // The base gets "-xxxxxx" appended, so a base of MAX - 8 characters is the longest accepted.
+    let base = path.join(os.tmpdir(), 'מורף');
+    while (base.length < MAX_PROFILE_PATH - 8) base += 'א';
+    base = base.slice(0, MAX_PROFILE_PATH - 8);
+    const atLimit = new OfficeProfileManager({ baseDir: base });
+    assert.equal(atLimit.baseDir, base, 'accepted as is');
+    S.coordinator.officeProfiles = atLimit;
+    const file = makeRichOdt(path.join(S.dirOf('limit'), 'letter.odt'));
+    const u = await S.convert(file, 'pdf');
+    assert.equal(u.state, 'completed', `profile path of ${atLimit.profileDirFor(S.tools.path('soffice')).length} characters: ${u.error}`);
+    const over = new OfficeProfileManager({ baseDir: `${base}אאאאאאאאאאאא` });
+    assert.notEqual(over.baseDir, `${base}אאאאאאאאאאאא`, 'too long: falls back');
+    assert.ok(over.baseDir.length <= MAX_PROFILE_PATH);
+    S.coordinator.officeProfiles = over;
+    const v = await S.convert(file, 'docx');
+    assert.equal(v.state, 'completed', v.error);
+  } finally { S.stop(); }
+});
+
 test('Hebrew folder names and long paths through every engine', opts, async () => {
   const S = createStack('win-paths');
   try {

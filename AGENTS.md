@@ -52,6 +52,15 @@ npm run e2e:flow       # real window: add, convert, stop, forged IPC, history, C
 Changes to native engines, `bin/`, Electron, sharp or packaging also need the Windows checks in
 `docs/TESTING.md`. A mock or a green build does not prove installed behaviour.
 
+## Engines (bin/)
+
+- Engines come only from `scripts/engines.lock.json` through `scripts/fetch-engines.cjs`; every
+  download is hash-checked. Never copy binaries into `bin/` by hand or fetch "latest".
+- A lock change goes with a passing `Bundled engines, packaged app and installer (Windows)` CI job,
+  the new `bin-manifest.json` from that job, and `THIRD_PARTY_NOTICES.md` updated (a test checks it).
+- Process separation (utility process, tree kill) is not OS confinement; Windows Job Objects and
+  restricted tokens are backlog item D2. Do not describe the worker as a sandbox.
+
 ## Keep changes reviewable
 
 Architecture refactors, dependency/Electron/tool upgrades and new formats go in separate commits or

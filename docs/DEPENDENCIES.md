@@ -27,5 +27,17 @@ app-builder-lib/tar advisories and is not applied. Never use `npm audit fix --fo
 
 ## Native engines (bin/, not npm)
 
-Recorded per file with SHA-256 in `bin-manifest.json` (to be created from a pinned, tested fetch;
-see `docs/RELEASING.md`). Versions are reported at runtime by the ToolRegistry probe (`tools:status` → `details`).
+Pinned in `scripts/engines.lock.json` (exact URL + SHA-256 of each download) from the Windows payload
+CI run that tested them (run 38609375299); every bundled file is in `bin-manifest.json` (12,530 files).
+
+| Engine | Version | Download SHA-256 | Chosen because |
+| --- | --- | --- | --- |
+| FFmpeg (gyan.dev essentials) | 9.0.2 | `60f46726…2047ba` | newest release at least 14 days old; permanent versioned URL; has libx264, libvpx-vp9, libopus, libmp3lame, libvorbis (probed) |
+| 7-Zip | 26.03 | `c0680064…513926` | 26.04 was 9 days old |
+| Poppler (Windows build) | 26.09.0-0 | `7a6f256a…56c8d0` | newest release at least 14 days old |
+| LibreOffice | 26.2.6.3 | `f9877032…fb2660` | current "still" branch (26.2.6 = build 26.2.6.3); permanent archive URL |
+| Calibre | 9.15.0 | `0f96ae06…800853` | 9.16 was 5 days old; hash also computed independently outside CI |
+
+Versions are reported at runtime by the ToolRegistry probe (`tools:status` → `details`); the packaged
+app's are in `resources/bin/ENGINES.json`. Linux CI uses the distribution's engines (ffmpeg 6.1,
+Poppler 24.02, LibreOffice 24.2, Calibre 7.6, 7-Zip 23.01); those are not the shipped versions.

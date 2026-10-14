@@ -3,7 +3,7 @@
 //
 // Resolution order for each tool:
 //   1. MORPH_TOOL_<NAME> environment override (absolute path; development and tests)
-//   2. resources/bin and <repo>/bin, Windows layout (fetch-bin.ps1)
+//   2. resources/bin and <repo>/bin, Windows layout (scripts/fetch-engines.cjs)
 //   3. off Windows only: the same tool on PATH (development on Linux/macOS)
 const fs = require('fs');
 const path = require('path');
