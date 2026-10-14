@@ -27,11 +27,11 @@
   "repository": "github:OrMeirDev/Morph",
   "dependencies": {
     "electron-updater": "^6.8.9",
-    "file-type": "^19.6.0",
+    "file-type": "^21.3.4",
     "heic-convert": "^2.1.0",
     "imagetracerjs": "^1.2.6",
     "pdf-lib": "^1.17.1",
-    "sharp": "^0.33.5"
+    "sharp": "^0.35.5"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
