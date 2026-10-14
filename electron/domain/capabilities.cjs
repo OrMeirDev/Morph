@@ -29,6 +29,7 @@ const FIDELITY = {
   REPACK: 'repack', // archive contents preserved, container/compression changes
   AUDIO_ONLY: 'audio-only', // the video track is dropped
   RESIZED: 'resized', // ICO: at most 256x256
+  RESAMPLED: 'resampled', // animations: frame rate and width reduced (GIF 12 fps, APNG 15 fps, <= 720 px)
 };
 
 function fidelityOf(kind, ext, target) {
@@ -41,7 +42,8 @@ function fidelityOf(kind, ext, target) {
   if (FFMPEG_KINDS.has(kind)) {
     if (target === 'png') return FIDELITY.SINGLE_FRAME;
     if (kind === 'video' && ['mp3', 'm4a', 'wav', 'ogg', 'flac', 'opus', 'aac'].includes(target)) return FIDELITY.AUDIO_ONLY;
-    if (['wav', 'flac', 'apng'].includes(target)) return FIDELITY.LOSSLESS;
+    if (target === 'gif' || target === 'apng') return FIDELITY.RESAMPLED;
+    if (['wav', 'flac'].includes(target)) return FIDELITY.LOSSLESS;
     return FIDELITY.LOSSY;
   }
   if (kind === 'image') {

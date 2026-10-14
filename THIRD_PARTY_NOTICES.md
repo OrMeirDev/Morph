@@ -27,7 +27,11 @@ Each is distributed under its own license.
   See `bin/7zip/License.txt`.
 - Project and source: https://www.7-zip.org/
 
+The exact versions and SHA-256 of every bundled engine file are listed in `bin-manifest.json` for
+each release (see docs/RELEASING.md).
+
 ## npm packages
-- sharp / libvips (Apache-2.0, LGPL-3.0 for libvips), heic-convert and libheif-js (ISC / LGPL-3.0),
-  pdf-lib (MIT), imagetracerjs (Unlicense), file-type (MIT), Electron, React, Vite (MIT),
+- sharp 0.35 / libvips 8.18 (Apache-2.0, LGPL-3.0 for libvips), heic-convert and libheif-js
+  (ISC / LGPL-3.0), pdf-lib (MIT), imagetracerjs (Unlicense), file-type (MIT), electron-updater
+  (MIT), Electron 44 (MIT, with Chromium's licenses in LICENSES.chromium.html), React (MIT),
   lucide-react (ISC). See each package in node_modules for full terms.

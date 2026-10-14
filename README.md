@@ -24,7 +24,9 @@ The installer is not code-signed, so Windows SmartScreen warns on first run: cli
 | E-book (EPUB, MOBI, AZW3) | PDF, EPUB, MOBI, AZW3, Word, text |
 | Archive (ZIP, 7Z, RAR, TAR, TAR.GZ) | ZIP, 7Z, TAR, TAR.GZ |
 
-Plus a unit converter (length, weight, temperature, volume, area incl. dunam, speed, data size, time) and a world clock.
+Only conversions whose engine is installed and passed its startup check are offered. The full matrix, with what each direction changes and which are covered by tests, is in [docs/FORMATS.md](docs/FORMATS.md).
+
+Plus a unit converter (length, weight, temperature, volume, area incl. dunam, speed, data size with decimal KB and binary KiB, time) and a world clock that says when a chosen time falls in a daylight-saving gap or happens twice.
 
 Per-row "convert only this" and "convert all", a per-kind shortcut ("convert all images to JPG"), history, and a fixed-frame window that never needs page scrolling.
 
@@ -34,15 +36,19 @@ Per-row "convert only this" and "convert all", a per-kind shortcut ("convert all
 npm install
 npm run fetch-bin   # downloads ffmpeg, 7-Zip, Poppler, LibreOffice and Calibre into bin/ (not in git: too large)
 npm run dev         # app with hot reload
-npm run dist        # build the installer into release/
+npm run check       # module-boundary rules, all tests (incl. the real engines found), build
+npm run e2e:flow    # the conversion flow in a real Electron window
+npm run dist        # build the installer into release/ (refuses a bin/ that does not match bin-manifest.json)
 npm run release     # build and publish a GitHub release (needs GH_TOKEN)
 ```
 
-To publish an update: bump `version` in `package.json`, then run `npm run release`.
+Read [AGENTS.md](AGENTS.md) before changing code: layers, rules and checks. Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md); tests and the pending Windows checks: [docs/TESTING.md](docs/TESTING.md); releasing: [docs/RELEASING.md](docs/RELEASING.md).
 
 ## Notes
 
-- PDF → Word goes through LibreOffice's PDF import. Plain text documents convert well; complex layouts and tables come out approximate (true of every PDF-to-Word tool).
+- Conversions are not all lossless. Each direction says what changes (e.g. only the first frame, text only, the first sheet of a spreadsheet, a traced approximation for image → SVG); the app shows a note next to the file when it matters.
+- PDF → Word goes through LibreOffice's PDF import, which rebuilds the layout. In Morph's tests simple text pages convert; complex layouts, tables and fonts are not yet covered by tests and may come out approximate.
+- Originals are never changed or overwritten. A new file gets a free name (`name (1).ext`), and a stopped or failed conversion leaves no file behind.
 - RAR archives can be opened and converted to other formats, but not created (7-Zip/unRAR license).
 
 ## Licenses

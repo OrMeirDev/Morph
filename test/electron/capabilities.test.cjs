@@ -40,6 +40,8 @@ test('fidelity is stated for lossy-in-kind directions', () => {
   assert.equal(capabilityFor('sheet', 'xlsx', 'csv').fidelity, 'first-sheet');
   assert.equal(capabilityFor('video', 'mp4', 'mp3').fidelity, 'audio-only');
   assert.equal(capabilityFor('archive', 'zip', '7z').fidelity, 'repack');
+  assert.equal(capabilityFor('video', 'mp4', 'apng').fidelity, 'resampled');
+  assert.equal(capabilityFor('audio', 'mp3', 'flac').fidelity, 'lossless');
 });
 
 test('an unknown direction has no capability', () => {

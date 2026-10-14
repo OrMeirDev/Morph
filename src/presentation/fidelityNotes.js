@@ -11,6 +11,7 @@ const NOTES = {
   rasterize: 'העמודים יהפכו לתמונות',
   resized: 'עד 256×256 פיקסלים',
   'audio-only': 'רק השמע יישמר',
+  resampled: 'קצב התמונות והרוחב יוקטנו (עד 720 פיקסלים)',
 };
 
 export const fidelityNote = (category) => NOTES[category] || null;
