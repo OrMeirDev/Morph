@@ -123,18 +123,26 @@ async function main() {
   const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'morph-update-work-'));
   const big = makeBigOdt(path.join(workDir, 'during-update.odt'), 40000);
   const fileId = await c.evaluate(`window.morph.detect([${JSON.stringify(big)}]).then((d) => d[0].id)`);
-  await c.evaluate(`window.__jobs = []; window.morph.onJobUpdate((u) => window.__jobs.push(u.state)); window.morph.enqueue(${JSON.stringify(fileId)}, 'pdf')`);
+  // Job states reach the test as console events pushed over the protocol, not by polling the page:
+  // the page goes away when the app quits, and a poll at that moment can stall.
+  await c0.send('Runtime.enable');
+  await c.evaluate(`window.morph.onJobUpdate((u) => console.debug('morph-job:' + u.state)); window.morph.enqueue(${JSON.stringify(fileId)}, 'pdf')`);
+  const jobStatesSeen = () => c0.events.filter((e) => e.method === 'Runtime.consoleAPICalled')
+    .map((e) => String(e.params.args?.[0]?.value || '')).filter((v) => v.startsWith('morph-job:')).map((v) => v.slice(10));
   const loBin = path.join(installDir, 'resources', 'bin', 'libreoffice');
   const busy = await until(() => (processesUnder(loBin).some((p) => /soffice\.bin/i.test(p)) ? processesUnder(loBin) : null), 120000, 200);
   check('a LibreOffice conversion is running at update time', busy, busy);
   step('pressing "restart to update" while LibreOffice converts');
   const installCall = c.evaluate('window.morph.installAppUpdate()', 60000).catch((e) => e.message); // the app quits during the call
-  const jobStates = await until(() => c.evaluate('window.__jobs.slice()').then((j) => (j.includes('cancelled') ? j : null)).catch(() => null), 30000, 200);
-  check('the running conversion is cancelled before the app quits', jobStates?.includes('cancelled'), jobStates);
+  const quit = await until(() => (processesUnder(installDir).some((p) => /Morph\.exe/i.test(p)) ? null : true), 90000, 500);
+  // Read before the new version starts: its start-up recovery would clean up after a hard kill.
+  const journalAtQuit = fs.existsSync(path.join(userData, 'jobs.json')) ? fs.readFileSync(path.join(userData, 'jobs.json'), 'utf8') : '(none)';
   const installResult = await installCall;
   step(`installAppUpdate returned: ${installResult}`);
-  const quit = await until(() => (processesUnder(installDir).some((p) => /Morph\.exe/i.test(p)) ? null : true), 60000, 1000);
   check('the app quit to install the update', quit === true, installResult);
+  const jobStates = jobStatesSeen();
+  check('the running conversion was cancelled (state sent to the window before the app quit)', jobStates.includes('cancelled') && !jobStates.includes('completed'), jobStates);
+  check('crash journal empty when the app quit (the cancel finished; nothing left for recovery)', (() => { try { return Object.keys(JSON.parse(journalAtQuit).active || {}).length === 0; } catch { return false; } })(), journalAtQuit);
   c.close();
 
   step('waiting for the silent install and the restart');

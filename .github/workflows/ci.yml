@@ -1,5 +1,5 @@
-# Required checks for every pull request and push to main (MOR-08). After the first green run,
-# mark both jobs as required in the branch protection / ruleset for main.
+# Required checks for every pull request and push to main (MOR-08). The owner marks all three jobs
+# as required status checks in a ruleset for main (exact names: docs/RELEASING.md §1).
 name: CI
 
 on:
