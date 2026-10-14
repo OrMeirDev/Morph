@@ -13,11 +13,9 @@ const engine = (over = {}) => ({
   download: { url: 'https://example.org/tool.zip', sha256: 'a'.repeat(64), type: 'zip' }, ...over,
 });
 
-test('the committed lock is valid', () => {
+test('the committed lock is valid and every engine is pinned to an https URL and a SHA-256', () => {
   const lock = JSON.parse(fs.readFileSync(path.join(__dirname, '../../scripts/engines.lock.json'), 'utf8'));
-  // Pinning stage 1: URLs are exact where the source allows; hashes come from the Windows payload
-  // CI run that tested them. Stage 2 (committed with those hashes) makes this requirePinned: true.
-  assert.deepEqual(validateLock(lock, { requirePinned: false }), []);
+  assert.deepEqual(validateLock(lock, { requirePinned: true }), []);
   assert.deepEqual(lock.engines.map((e) => e.name).sort(), ['7zip', 'calibre', 'ffmpeg', 'libreoffice', 'poppler']);
 });
 

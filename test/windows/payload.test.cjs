@@ -54,6 +54,18 @@ async function cancelMidway(S, file, target, sub) {
   return { update: S.lastUpdate(d.id), during, left: left ?? processesUnder(sub) };
 }
 
+// A book long enough that rendering it to PDF keeps Calibre busy for many seconds.
+function makeBigEpub(file, chapters = 120) {
+  const { makeZip } = require('../electron/helpers.cjs');
+  const para = (i) => `<p>Paragraph ${i}: שורה בעברית and enough English words to fill a line of the rendered page with text.</p>`;
+  const xhtml = (n) => `<?xml version="1.0" encoding="utf-8"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>C${n}</title></head><body><h1>Chapter ${n}</h1>${Array.from({ length: 80 }, (_, i) => para(i)).join('')}</body></html>`;
+  const ids = Array.from({ length: chapters }, (_, i) => i + 1);
+  const opf = '<?xml version="1.0" encoding="utf-8"?><package xmlns="http://www.idpf.org/2007/opf" version="2.0" unique-identifier="uid"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="uid">big-book</dc:identifier><dc:title>Big Book</dc:title><dc:language>en</dc:language></metadata>'
+    + `<manifest>${ids.map((n) => `<item id="c${n}" href="c${n}.xhtml" media-type="application/xhtml+xml"/>`).join('')}</manifest><spine>${ids.map((n) => `<itemref idref="c${n}"/>`).join('')}</spine></package>`;
+  const container = '<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>';
+  return makeZip(file, [{ name: 'mimetype', data: 'application/epub+zip' }, { name: 'META-INF/container.xml', data: container }, { name: 'content.opf', data: opf }, ...ids.map((n) => ({ name: `c${n}.xhtml`, data: xhtml(n) }))]);
+}
+
 const noStaging = (dir) => fs.readdirSync(dir).filter((n) => n.startsWith('.~morph-'));
 
 test('Stop during a LibreOffice conversion ends soffice.com and soffice.bin; no output, no staging', opts, async () => {
@@ -81,12 +93,14 @@ test('Stop during a Calibre conversion ends ebook-convert and its helpers; no ou
   try {
     await S.tools.probe();
     const dir = S.dirOf('book');
-    const file = makeRichEpub(path.join(dir, 'book.epub'));
+    const file = makeBigEpub(path.join(dir, 'book.epub'));
     const r = await cancelMidway(S, file, 'pdf', 'calibre');
     console.log('Calibre processes while converting:', r.during.join(', '));
+    assert.ok(r.during.some((p) => /ebook-convert|calibre-parallel/i.test(p)), 'Calibre was still converting when Stop was pressed');
     assert.equal(r.update.state, 'cancelled');
     assert.deepEqual(r.left, [], 'no Calibre process left (ebook-convert, calibre-parallel, QtWebEngineProcess)');
     assert.deepEqual(fs.readdirSync(dir), ['book.epub']);
+    assert.deepEqual(noStaging(dir), []);
   } finally { S.stop(); }
 });
 
@@ -97,17 +111,22 @@ test('Office profile: a first start cancelled midway, then a damaged profile, bo
     const base = path.join(S.root, 'prof');
     S.coordinator.officeProfiles = new OfficeProfileManager({ baseDir: base });
     const file = makeRichOdt(path.join(S.dirOf('p'), 'letter.odt'));
-    // Cancel while the profile is being created (first start).
+    // Stop while the profile's first start (soffice --terminate_after_init) is running: the test
+    // presses Stop half a second after that very command starts.
     const [d] = await S.intake.detectPaths([file]);
+    const runTool = S.coordinator.runTool;
+    S.coordinator.runTool = (name, args, o) => {
+      const p = runTool(name, args, o);
+      if (args.includes('--terminate_after_init')) setTimeout(() => S.coordinator.cancel(d.id), 500);
+      return p;
+    };
     S.coordinator.enqueue({ fileId: d.id, target: 'pdf' });
-    await until(() => processesUnder('libreoffice').length > 0, 60000);
-    S.coordinator.cancel(d.id);
     await S.coordinator.whenIdle();
+    S.coordinator.runTool = runTool;
     assert.equal(S.lastUpdate(d.id).state, 'cancelled');
     const profileDir = S.coordinator.officeProfiles.profileDirFor(S.tools.path('soffice'));
-    // Normally Stop lands inside the first start (it takes seconds on Windows); if the first start
-    // was already done, the profile is ready and this run only proves cancel + recovery.
-    console.log('first start interrupted by Stop:', !OfficeProfileManager.healthy(profileDir));
+    assert.equal(OfficeProfileManager.healthy(profileDir), false, 'an interrupted first start is never marked ready');
+    assert.deepEqual(processesUnder('libreoffice'), [], 'the interrupted first start left no process');
     let u = await S.convert(file, 'docx');
     assert.equal(u.state, 'completed', `after a cancelled first start: ${u.error}`);
     assert.equal(OfficeProfileManager.healthy(profileDir), true);

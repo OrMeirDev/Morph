@@ -22,10 +22,13 @@ const installDir = path.join(process.env.LOCALAPPDATA, 'Programs', 'Morph');
 const exe = path.join(installDir, 'Morph.exe');
 const userData = path.join(process.env.APPDATA, 'Morph');
 
+// The installed version as Windows lists it (Settings > Apps): the per-user Uninstall key whose
+// DisplayName is Morph (electron-builder writes "Morph <version>").
 function displayVersion() {
-  const r = spawnSync('reg', ['query', 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall', '/s', '/f', 'Morph', '/d'], { encoding: 'utf8' });
-  const block = (r.stdout || '').split(/\r?\n\r?\n/).find((b) => /DisplayName\s+REG_SZ\s+Morph/.test(b)) || '';
-  return (block.match(/DisplayVersion\s+REG_SZ\s+(\S+)/) || [])[1] || null;
+  const ps = "Get-ItemProperty 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*' -ErrorAction SilentlyContinue | "
+    + "Where-Object { $_.DisplayName -like 'Morph*' } | Select-Object -First 1 -ExpandProperty DisplayVersion";
+  const r = spawnSync('powershell.exe', ['-NoProfile', '-Command', ps], { encoding: 'utf8' });
+  return (r.stdout || '').trim() || null;
 }
 
 function install(setup) {
@@ -40,7 +43,7 @@ async function main() {
   // 1. The previous release, installed silently (per user, no UAC).
   check('previous release installs silently', install(oldSetup) === 0 && fs.existsSync(exe), installDir);
   const oldVersion = displayVersion();
-  check('previous version registered', oldVersion, oldVersion);
+  check('previous version registered', oldVersion === '1.0.3', oldVersion);
 
   // 2. Its settings and history in the version-0 format Morph <= 1.0.3 wrote.
   const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'morph-upgrade-out-'));

@@ -93,17 +93,14 @@ jobs:
         with:
           path: .cache/engines
           key: engines-${{ hashFiles('scripts/engines.lock.json') }}
-      - name: Fetch the pinned engine payload (every download hash-checked)
+      - name: Fetch the pinned engine payload (every download hash-checked, fresh or cached)
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: node scripts/fetch-engines.cjs --resolve-out engines.resolved.json
+        run: node scripts/fetch-engines.cjs --require-pinned --resolve-out engines.resolved.json
       - name: Record the payload (bin-manifest)
         run: node scripts/bin-manifest.cjs record --out bin-manifest.ci.json
       - name: Payload matches the committed bin-manifest.json
-        shell: bash
-        run: |
-          if [ -f bin-manifest.json ]; then node scripts/bin-manifest.cjs verify
-          else echo "::warning::no committed bin-manifest.json yet; recorded as an artifact for review"; fi
+        run: node scripts/bin-manifest.cjs verify
       - name: Prepare FAT32, exFAT and SMB test locations
         shell: pwsh
         run: |
