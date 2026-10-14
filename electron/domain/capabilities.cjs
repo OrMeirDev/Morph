@@ -32,6 +32,13 @@ const FIDELITY = {
   RESAMPLED: 'resampled', // animations: frame rate and width reduced (GIF 12 fps, APNG 15 fps, <= 720 px)
 };
 
+// Losses the engine tests observed for one direction, beyond its category. Each ID has a Hebrew note
+// in src/presentation/fidelityNotes.js (a test checks both sides) and a line in docs/FORMATS.md.
+const KNOWN_LIMITS = {
+  'ebook>docx': ['rtl-paragraphs-lost'], // Calibre keeps Hebrew text but not paragraph direction
+};
+const limitsOf = (kind, target) => KNOWN_LIMITS[`${kind}>${target}`] || [];
+
 function fidelityOf(kind, ext, target) {
   if (kind === 'archive') return FIDELITY.REPACK;
   if (target === 'csv') return FIDELITY.FIRST_SHEET;
@@ -91,6 +98,7 @@ function targetsFor({ kind, ext }, has) {
   const available = [];
   const unavailable = [];
   const fidelity = {};
+  const limits = {};
   for (const target of KINDS[kind]?.targets || []) {
     if (sameFormat(target, ext)) continue;
     const cap = capabilityFor(kind, ext, target);
@@ -100,9 +108,10 @@ function targetsFor({ kind, ext }, has) {
     else {
       available.push(target);
       fidelity[target] = cap.fidelity;
+      if (limitsOf(kind, target).length) limits[target] = limitsOf(kind, target);
     }
   }
-  return { available, unavailable, fidelity };
+  return { available, unavailable, fidelity, limits };
 }
 
-module.exports = { capabilityFor, targetsFor, fidelityOf, FIDELITY, FFMPEG_ENCODERS };
+module.exports = { capabilityFor, targetsFor, fidelityOf, limitsOf, FIDELITY, FFMPEG_ENCODERS, KNOWN_LIMITS };

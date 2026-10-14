@@ -192,4 +192,13 @@ function makeRichEpub(file) {
     { name: 'OEBPS/content.opf', data: opf }, { name: 'OEBPS/nav.xhtml', data: nav }, { name: 'OEBPS/c1.xhtml', data: c1 }, { name: 'OEBPS/c2.xhtml', data: c2 }]);
 }
 
-module.exports = { makeRichEpub, BOOK, tmpDir, makeZip, makeGif, makeWav, makePng, makePdf, sevenZip, readZip, zipText, makeRichOdt, makeRichOds, makeRichOdp, DOC, SHEET, SLIDES };
+// A document large enough that LibreOffice is still busy when Stop is pressed.
+function makeBigOdt(file, paragraphs = 40000) {
+  const ns = 'xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" office:version="1.3"';
+  const body = Array.from({ length: paragraphs }, (_, i) => `<text:p>Paragraph ${i} שורה בעברית with enough words to lay out a full line of text on the page.</text:p>`).join('');
+  const content = `<?xml version="1.0" encoding="UTF-8"?><office:document-content ${ns}><office:body><office:text>${body}</office:text></office:body></office:document-content>`;
+  const manifest = '<?xml version="1.0" encoding="UTF-8"?><manifest:manifest xmlns:manifest="urn:oasis:names:tc:opendocument:xmlns:manifest:1.0" manifest:version="1.3"><manifest:file-entry manifest:full-path="/" manifest:media-type="application/vnd.oasis.opendocument.text"/><manifest:file-entry manifest:full-path="content.xml" manifest:media-type="text/xml"/></manifest:manifest>';
+  return makeZip(file, [{ name: 'mimetype', data: 'application/vnd.oasis.opendocument.text' }, { name: 'content.xml', data: content }, { name: 'META-INF/manifest.xml', data: manifest }]);
+}
+
+module.exports = { makeBigOdt, makeRichEpub, BOOK, tmpDir, makeZip, makeGif, makeWav, makePng, makePdf, sevenZip, readZip, zipText, makeRichOdt, makeRichOds, makeRichOdp, DOC, SHEET, SLIDES };

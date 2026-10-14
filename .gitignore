@@ -1,6 +1,7 @@
 node_modules/
 dist/
 release/
+release-*/
 # ffmpeg, 7-Zip, Poppler, LibreOffice and Calibre are large third-party binaries; fetch them with `npm run fetch-bin`.
 bin/
 .claude/

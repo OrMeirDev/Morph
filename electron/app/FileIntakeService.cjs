@@ -62,7 +62,7 @@ class FileIntakeService {
     this.files.set(id, { id, path: p, realPath: real, size: st.size, mtimeMs: st.mtimeMs, kind: d.kind, ext: d.ext });
     return {
       id, path: p, ok: true, kind: d.kind, label: KINDS[d.kind].label, ext: d.ext, size: d.size, renamed: d.renamed,
-      confidence: d.confidence, targets: t.available, defaultTarget: t.available[0], fidelity: t.fidelity,
+      confidence: d.confidence, targets: t.available, defaultTarget: t.available[0], fidelity: t.fidelity, limits: t.limits,
       unavailable: t.unavailable.map((u) => u.target),
     };
   }

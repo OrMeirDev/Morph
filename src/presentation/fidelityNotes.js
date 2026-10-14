@@ -16,6 +16,12 @@ const NOTES = {
 
 export const fidelityNote = (category) => NOTES[category] || null;
 
+// Direction-specific losses seen in the engine tests (electron/domain/capabilities.cjs KNOWN_LIMITS).
+export const LIMIT_NOTES = {
+  'rtl-paragraphs-lost': 'הטקסט בעברית יישמר, אבל כיוון הפסקאות (ימין לשמאל) לא יסומן ב-Word',
+};
+export const limitNotes = (ids = []) => ids.map((id) => LIMIT_NOTES[id]).filter(Boolean);
+
 // Engine capability IDs -> the tool name a user would recognise.
 const TOOL_OF = { ffmpeg: 'ffmpeg', ffprobe: 'ffmpeg', images: 'sharp', pdftoppm: 'Poppler', pdftotext: 'Poppler', pdfinfo: 'Poppler', soffice: 'LibreOffice', calibre: 'Calibre', sevenzip: '7-Zip' };
 export const missingToolNames = (caps = []) => [...new Set(caps.map((c) => TOOL_OF[c.split(':')[0]] || c.split(':')[0]))];

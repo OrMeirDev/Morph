@@ -79,7 +79,7 @@ jobs:
     # Windows-only checks against it, then the packaged app and the installer (unsigned).
     name: Bundled engines, packaged app and installer (Windows)
     runs-on: windows-latest
-    timeout-minutes: 150
+    timeout-minutes: 180
     env:
       MORPH_REQUIRE_PAYLOAD: '1'
     steps:
@@ -144,6 +144,18 @@ jobs:
         run: gh release download v1.0.3 --repo ${{ github.repository }} --pattern "Morph-Setup-1.0.3.exe" --dir old
       - name: Install over 1.0.3, check the installed copy, uninstall
         run: node e2e/installer-check.cjs old/Morph-Setup-1.0.3.exe release/Morph-Setup-1.0.4-ci.exe --new-version 1.0.4-ci --report installer.json
+      - name: Build two update-test versions (1.0.4 and 1.0.5) with a local update feed; never published
+        shell: bash
+        run: |
+          rm -rf release   # free disk: the installer checks above are done with it
+          for v in 1.0.4:release-update-old 1.0.5:release-update-new; do
+            MORPH_UPDATE_FEED=http://127.0.0.1:8765/ MORPH_VERSION=${v%%:*} MORPH_OUT=${v##*:} \
+              npx electron-builder --config e2e/update-feed.builder.cjs --win nsis --x64 --publish never
+            rm -rf "${v##*:}/win-unpacked"
+          done
+          ls -la release-update-old release-update-new
+      - name: In-app auto-update from the local feed, during a running conversion
+        run: node e2e/autoupdate-check.cjs release-update-old/Morph-Setup-1.0.4.exe release-update-new --old-version 1.0.4 --new-version 1.0.5 --port 8765 --report autoupdate.json
       - name: Evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -157,4 +169,5 @@ jobs:
             smoke.json
             signature.json
             installer.json
+            autoupdate.json
           if-no-files-found: warn

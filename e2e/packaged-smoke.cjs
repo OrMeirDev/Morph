@@ -21,26 +21,7 @@ const opt = (name) => { const i = args.indexOf(name); return i > 0 ? args[i + 1]
 const PORT = 9339;
 const checks = [];
 const check = (name, ok, detail = '') => { checks.push({ name, ok: !!ok, detail: typeof detail === 'string' ? detail : JSON.stringify(detail) }); };
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-
-async function cdp(wsUrl) {
-  const ws = new WebSocket(wsUrl);
-  await new Promise((r, j) => { ws.onopen = r; ws.onerror = j; });
-  let id = 0;
-  const pending = new Map();
-  const events = [];
-  ws.onmessage = (m) => {
-    const msg = JSON.parse(m.data);
-    if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); } else if (msg.method) events.push(msg);
-  };
-  const send = (method, params = {}) => new Promise((r) => { const n = ++id; pending.set(n, r); ws.send(JSON.stringify({ id: n, method, params })); });
-  const evaluate = async (expression) => {
-    const r = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true });
-    if (r.result?.exceptionDetails) throw new Error(`page: ${r.result.exceptionDetails.exception?.description || r.result.exceptionDetails.text}`);
-    return r.result?.result?.value;
-  };
-  return { send, evaluate, events, close: () => ws.close() };
-}
+const { findPage, connect: cdp, wait } = require('./cdp.cjs');
 
 async function makeFixtures(dir) {
   const h = require('../test/electron/helpers.cjs');
@@ -85,13 +66,7 @@ async function main() {
   const child = spawn(exe, [`--remote-debugging-port=${PORT}`, ...extra], { env, stdio: 'ignore', detached: false });
   let page;
   try {
-    for (let i = 0; i < 120 && !page; i++) {
-      await wait(500);
-      try {
-        const list = await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json();
-        page = list.find((p) => p.type === 'page' && /index\.html/.test(p.url));
-      } catch { /* not up yet */ }
-    }
+    page = await findPage(PORT);
     check('app window opened', page, page?.url);
     if (!page) return;
     const c = await cdp(page.webSocketDebuggerUrl);

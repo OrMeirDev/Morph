@@ -27,3 +27,13 @@ test('friendlyError maps engine messages to Hebrew', () => {
   assert.match(friendlyError('moov atom not found'), /פגום/);
   assert.equal(friendlyError('weird'), 'ההמרה נכשלה');
 });
+
+test('every known per-direction limit in the registry has a Hebrew note for the row', async () => {
+  const { createRequire } = await import('node:module');
+  const require = createRequire(import.meta.url);
+  const { KNOWN_LIMITS } = require('../../electron/domain/capabilities.cjs');
+  const { LIMIT_NOTES, limitNotes } = await import('../../src/presentation/fidelityNotes.js');
+  for (const ids of Object.values(KNOWN_LIMITS)) for (const id of ids) assert.ok(LIMIT_NOTES[id], `note for ${id}`);
+  assert.match(limitNotes(['rtl-paragraphs-lost'])[0], /ימין לשמאל/);
+  assert.deepEqual(limitNotes(['unknown']), []);
+});

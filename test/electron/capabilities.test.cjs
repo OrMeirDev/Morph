@@ -54,3 +54,9 @@ test('an AZW3 book is offered MOBI but not AZW3', () => {
   assert.ok(t.available.includes('mobi'));
   assert.ok(!t.available.includes('azw3'));
 });
+
+test('e-book -> DOCX carries its known limit (Hebrew paragraph direction) to the UI', () => {
+  const t = targetsFor({ kind: 'ebook', ext: 'epub' }, () => true);
+  assert.deepEqual(t.limits.docx, ['rtl-paragraphs-lost']);
+  assert.equal(t.limits.txt, undefined);
+});

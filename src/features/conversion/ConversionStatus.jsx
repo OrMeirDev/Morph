@@ -3,7 +3,7 @@ import { baseName, fmtSize } from '../../presentation/formatters.js';
 import { friendlyError } from '../../presentation/errorMessages.js';
 import DetectionNotice from './DetectionNotice.jsx';
 import ConversionProgress from './ConversionProgress.jsx';
-import { fidelityNote, missingToolNames } from '../../presentation/fidelityNotes.js';
+import { fidelityNote, limitNotes, missingToolNames } from '../../presentation/fidelityNotes.js';
 
 // The meta line under a file name: size, detection notice, and where the conversion stands.
 export default function ConversionStatus({ item, unsupported }) {
@@ -23,6 +23,9 @@ export default function ConversionStatus({ item, unsupported }) {
           {['ready', 'queued', 'cancelled'].includes(item.status) && fidelityNote(item.fidelity?.[item.target]) && (
             <span className="muted"> · {fidelityNote(item.fidelity[item.target])}</span>
           )}
+          {['ready', 'queued', 'cancelled'].includes(item.status) && limitNotes(item.limits?.[item.target]).map((n) => (
+            <span key={n} className="warn-text"> · {n}</span>
+          ))}
         </>
       )}
       {busy && <ConversionProgress progress={item.progress} />}

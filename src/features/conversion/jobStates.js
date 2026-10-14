@@ -33,7 +33,7 @@ export function applyJobUpdate(item, u) {
 export function rowFromDetection(d) {
   if (d.ok) {
     return { id: d.id, path: d.path, kind: d.kind, label: d.label, ext: d.ext, size: d.size, targets: d.targets, target: d.defaultTarget,
-      fidelity: d.fidelity || {}, renamed: d.renamed, confidence: d.confidence, status: 'ready', progress: null };
+      fidelity: d.fidelity || {}, limits: d.limits || {}, renamed: d.renamed, confidence: d.confidence, status: 'ready', progress: null };
   }
   return { id: `x-${d.path}-${Math.random().toString(36).slice(2)}`, path: d.path, size: d.size, kind: d.kind, label: d.label, targets: [], status: 'unsupported', reason: d.error, missing: d.missing || [] };
 }

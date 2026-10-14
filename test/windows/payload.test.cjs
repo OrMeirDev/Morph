@@ -7,7 +7,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
-const { makeRichOdt, makeRichEpub } = require('../electron/helpers.cjs');
+const { makeRichOdt, makeRichEpub, makeBigOdt } = require('../electron/helpers.cjs');
 const { createStack } = require('../electron/engineStack.cjs');
 const { OfficeProfileManager } = require('../../electron/infra/OfficeProfileManager.cjs');
 
@@ -27,17 +27,6 @@ function processesUnder(sub) {
 async function until(fn, ms = 60000, step = 100) {
   const t0 = Date.now();
   for (;;) { const v = await fn(); if (v) return v; if (Date.now() - t0 > ms) return null; await new Promise((r) => setTimeout(r, step)); }
-}
-
-// A document large enough that LibreOffice is still busy when Stop is pressed.
-function makeBigOdt(file, paragraphs = 40000) {
-  makeRichOdt(file); // valid package to start from; content.xml replaced with many paragraphs
-  const { makeZip } = require('../electron/helpers.cjs');
-  const ns = 'xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" office:version="1.3"';
-  const body = Array.from({ length: paragraphs }, (_, i) => `<text:p>Paragraph ${i} שורה בעברית with enough words to lay out a full line of text on the page.</text:p>`).join('');
-  const content = `<?xml version="1.0" encoding="UTF-8"?><office:document-content ${ns}><office:body><office:text>${body}</office:text></office:body></office:document-content>`;
-  const manifest = '<?xml version="1.0" encoding="UTF-8"?><manifest:manifest xmlns:manifest="urn:oasis:names:tc:opendocument:xmlns:manifest:1.0" manifest:version="1.3"><manifest:file-entry manifest:full-path="/" manifest:media-type="application/vnd.oasis.opendocument.text"/><manifest:file-entry manifest:full-path="content.xml" manifest:media-type="text/xml"/></manifest:manifest>';
-  return makeZip(file, [{ name: 'mimetype', data: 'application/vnd.oasis.opendocument.text' }, { name: 'content.xml', data: content }, { name: 'META-INF/manifest.xml', data: manifest }]);
 }
 
 // Starts a conversion, waits until the engine's real worker process is running (matched by
