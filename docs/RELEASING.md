@@ -32,10 +32,13 @@ Rulesets → New branch ruleset, target `main` (default branch), enable:
 
 ## 3. Windows evidence (CI + manual)
 
-`docs/TESTING.md` § Windows checks lists the eight checks with Pass / Fail / Pending, the tested
-commit, OS and engine versions. Every check must be Pass for a release; the ones CI cannot do
-(drag and drop from Explorer, real USB stick and antivirus behaviour, in-app auto-update from a
-published feed, signed publisher) are done on a clean Windows 10/11 VM and recorded there.
+`docs/TESTING.md` § Windows checks lists every check with Pass / Fail / Pending, the tested commit,
+OS and engine versions. CI covers the bundled engines, the packaged app, installing over 1.0.3,
+uninstalling and the in-app update with the real updater from a local feed during a running
+conversion. Every check must be Pass for a release; the ones CI cannot do (drag and drop from
+Explorer, a real USB stick and antivirus behaviour, the signed publisher) are done on a clean
+Windows 10/11 desktop and recorded there. A signature step that reports `NotSigned` is Pending even
+though the step succeeds.
 
 ## 4. Version and notes (developer)
 
