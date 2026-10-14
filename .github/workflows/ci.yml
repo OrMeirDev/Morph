@@ -34,6 +34,8 @@ jobs:
       - run: npm ci --ignore-scripts --no-fund --no-audit
       - run: npm run check:imports
       - run: npm test
+      - name: The engine matrix must not have skipped silently
+        run: npm run test:engines 2>&1 | tee engines.log; ! grep -E "# (no 7-Zip|no ffmpeg|no poppler|no LibreOffice)" engines.log
       - run: npm run build
       - name: Production bundle carries no test hook
         run: "! grep -q __morphAdd dist/assets/*.js"
@@ -49,6 +51,9 @@ jobs:
     name: Checks (Windows, no bundled engines)
     runs-on: windows-latest
     timeout-minutes: 30
+    env:
+      # 7-Zip is preinstalled on GitHub's Windows images; the archive tests use it.
+      MORPH_TOOL_SEVENZIP: C:\Program Files\7-Zip\7z.exe
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -57,7 +62,7 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts --no-fund --no-audit
       - run: npm run check:imports
-      # Unit tests, sharp image matrix, 7-Zip archive tests (7za from 7zip-bin) and the taskkill
+      # Unit tests, sharp image matrix, 7-Zip archive tests and the taskkill
       # process-tree test run here; ffmpeg/Poppler/LibreOffice/Calibre directions skip without bin/.
       - run: npm test
       - run: npm run build

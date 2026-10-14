@@ -83,8 +83,8 @@ async function makePdf(file, pages = 1, text = 'Morph test') {
   return file;
 }
 
-// 7-Zip for archive tests: the host's 7z, else the 7za that ships in electron-builder's
-// 7zip-bin (copied out, because `npm ci --ignore-scripts` leaves it non-executable).
+// 7-Zip for archive tests: MORPH_TOOL_SEVENZIP, the host's 7z, else a 7za from a 7zip-bin package
+// if one is installed (copied out, because `npm ci --ignore-scripts` leaves it non-executable).
 function sevenZip() {
   if (process.env.MORPH_TOOL_SEVENZIP) return process.env.MORPH_TOOL_SEVENZIP;
   const { resolveTool } = require('../../electron/infra/ToolRegistry.cjs');
