@@ -24,7 +24,7 @@ const HELPER = path.join(ROOT, 'native', 'out', 'morph-confine.exe');
 const required = process.env.MORPH_REQUIRE_PAYLOAD === '1';
 const available = process.platform === 'win32' && fs.existsSync(path.join(BIN, 'libreoffice')) && fs.existsSync(HELPER) && !!workerRuntime();
 if (required) assert.ok(available, 'bin/, native/out/morph-confine.exe and the Electron binary are required (MORPH_REQUIRE_PAYLOAD=1)');
-const opts = { skip: !available && 'needs Windows, bin/, the built helper and the Electron binary', timeout: 600000 };
+const opts = { skip: !available && 'needs Windows, bin/, the built helper and the Electron binary', timeout: 300000 };
 
 const ps = (cmd) => execFileSync('powershell.exe', ['-NoProfile', '-Command', cmd], { encoding: 'utf8' }).trim();
 const processesOf = (exe) => {

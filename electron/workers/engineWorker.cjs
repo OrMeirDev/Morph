@@ -27,6 +27,7 @@ async function handle(msg) {
 
 const onMessage = (msg) => {
   if (!msg || typeof msg !== 'object') return;
+  if (msg.type === 'shutdown') { process.exit(0); return; } // orderly end after the last reply
   handle(msg).then(
     (result) => send({ id: msg.id, ok: true, result }),
     (e) => send({ id: msg.id, ok: false, error: String(e?.message || e).slice(0, 300) }),

@@ -45,9 +45,9 @@ function workerReadRoots(runtime) {
 // One confined worker process through the helper. Same surface as spawnWorker().
 function spawnConfinedWorker({ confinement, workspace, runtime }) {
   const launch = confinement.prepare('imageworker', runtime.exe, [WORKER], { workspace, read: workerReadRoots(runtime) });
-  const child = spawn(launch.exe, launch.args, { cwd: launch.cwd, env: { ...launch.env, ...runtime.env, MORPH_WORKER_STDIO: '1' }, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+  // detached off Windows only: the tree is then one process group (as in ProcessRunner).
+  const child = spawn(launch.exe, launch.args, { cwd: launch.cwd, env: { ...launch.env, ...runtime.env, MORPH_WORKER_STDIO: '1' }, windowsHide: true, detached: process.platform !== 'win32', stdio: ['pipe', 'pipe', 'pipe'] });
   const listeners = [];
-  const exits = [];
   let stderr = '';
   child.stderr.setEncoding('utf8');
   child.stderr.on('data', (d) => { stderr = (stderr + d).slice(-4000); });
@@ -57,18 +57,20 @@ function spawnConfinedWorker({ confinement, workspace, runtime }) {
     try { m = JSON.parse(line.slice(FRAME.length)); } catch { return; }
     for (const fn of listeners) fn(m);
   });
-  child.on('close', (code) => {
-    const stats = launch.readStats();
-    const limit = outcomeError(stats, 'image');
-    for (const fn of exits) fn(limit ? limit.message : `${code}${stderr ? `:${stderr.trim().split(/\r?\n/).pop().slice(0, 200)}` : ''}`, stats);
+  child.stdin.on('error', () => {}); // the worker may already be gone
+  // Settles once the helper has exited and its statistics (written as it exits) are read.
+  const closed = new Promise((resolve) => {
+    child.on('close', (code) => resolve({ code, stats: launch.readStats(), stderr: stderr.trim().split(/\r?\n/).pop()?.slice(0, 200) || '' }));
+    child.on('error', (e) => resolve({ code: null, stats: null, stderr: `spawn-failed:${e.code || e.message}` }));
   });
-  child.on('error', (e) => { for (const fn of exits) fn(`spawn-failed:${e.code || e.message}`, null); });
   return {
     post: (m) => { if (child.stdin.writable) child.stdin.write(`${JSON.stringify(m)}\n`); },
     onMessage: (fn) => listeners.push(fn),
-    onExit: (fn) => exits.push(fn),
+    shutdown: () => child.stdin.end(), // the worker exits when its stdin closes; the helper then writes its stats
     kill: () => killTree(child),
-    confined: launch.confined,
+    closed,
+    pid: child.pid,
+    confined: true,
   };
 }
 
@@ -77,19 +79,28 @@ function spawnWorker({ maxOldSpaceMb = 2048 } = {}) {
   if (process.versions.electron && process.type === 'browser') {
     const { utilityProcess } = require('electron');
     const child = utilityProcess.fork(WORKER, [], { serviceName: 'Morph engine', execArgv, stdio: 'ignore' });
+    const closed = new Promise((resolve) => child.once('exit', (code) => resolve({ code, stats: null, stderr: '' })));
     return {
       post: (m) => child.postMessage(m),
       onMessage: (fn) => child.on('message', fn),
       onExit: (fn) => child.on('exit', fn),
+      shutdown: () => child.postMessage({ type: 'shutdown' }),
       kill: () => child.kill(),
+      closed,
+      confined: false,
     };
   }
   const child = fork(WORKER, [], { execArgv, stdio: ['ignore', 'ignore', 'ignore', 'ipc'] });
+  const closed = new Promise((resolve) => child.once('exit', (code) => resolve({ code, stats: null, stderr: '' })));
   return {
-    post: (m) => child.send(m),
+    post: (m) => { if (child.connected) child.send(m); },
     onMessage: (fn) => child.on('message', fn),
     onExit: (fn) => child.on('exit', fn),
+    shutdown: () => { if (child.connected) child.send({ type: 'shutdown' }); },
     kill: () => child.kill('SIGKILL'),
+    closed,
+    pid: child.pid,
+    confined: false,
   };
 }
 
@@ -135,11 +146,23 @@ class PersistentWorker {
   stop() { if (this.w) { this.w.kill(); this.w = null; } }
 }
 
-// A fresh worker for one job (image conversion): cancelling kills it, so no library call can
+const withDeadline = (p, ms) => new Promise((resolve) => {
+  const t = setTimeout(() => resolve(null), ms);
+  p.then((v) => { clearTimeout(t); resolve(v); });
+});
+
+// A fresh worker for one job (image conversion). Cancelling kills it, so no library call can
 // finish and write after the user pressed Stop. With `confine` ({ confinement, workspace }) and
 // confinement enforced, the worker runs confined; if confinement is enforced but no runtime is
 // available, the job fails (never an unconfined fallback).
-function runInFreshWorker(msg, { signal, timeoutMs, onProgress = () => {}, confine = null, onStats = null } = {}) {
+//
+// Lifecycle: nothing settles while the worker process is alive. A successful reply is provisional:
+// the worker is asked to exit, its closure is awaited (bounded by shutdownMs, then forced), and for
+// a confined worker the helper's final outcome decides (a limit hit or an abnormal exit fails the
+// job even after a successful reply). Cancel and timeout kill at once and still wait for closure
+// before rejecting, so the caller removes the workspace or publishes only after the process is gone.
+// onStats(stats) receives the helper's accounting (confined workers) once the process has closed.
+function runInFreshWorker(msg, { signal, timeoutMs, onProgress = () => {}, confine = null, onStats = null, shutdownMs = 10000, killWaitMs = 15000 } = {}) {
   if (signal?.aborted) return Promise.reject(new CancelledError());
   let w;
   try {
@@ -147,7 +170,6 @@ function runInFreshWorker(msg, { signal, timeoutMs, onProgress = () => {}, confi
       const runtime = confine.runtime || workerRuntime();
       if (!runtime) throw Object.assign(new Error('confinement-unavailable:image:no worker runtime (Electron binary)'), { code: 'confinement-unavailable' });
       w = spawnConfinedWorker({ ...confine, runtime });
-      if (onStats) w.onExit((_, stats) => onStats(stats)); // the helper's accounting, once it exits
     } else if (confine && confine.confinement.mode === 'unavailable') {
       throw Object.assign(new Error(`confinement-unavailable:image:${confine.confinement.reason}`), { code: 'confinement-unavailable' });
     } else {
@@ -158,24 +180,60 @@ function runInFreshWorker(msg, { signal, timeoutMs, onProgress = () => {}, confi
   }
   return new Promise((resolve, reject) => {
     const id = ++seq;
-    let done = false;
-    const end = (fn, v) => {
-      if (done) return;
-      done = true;
+    let settling = false;
+    const report = (exit) => { if (onStats) onStats(exit ? exit.stats : null); };
+    // The final word on a process that has closed: its exit and, when confined, the helper's outcome.
+    const exitError = (exit) => {
+      const limit = outcomeError(exit.stats, 'image');
+      if (limit) return Object.assign(limit, { confinement: exit.stats });
+      if (w.confined && (!exit.stats || exit.stats.outcome !== 'exited')) return new Error(`worker-exit:no-outcome:${exit.code}${exit.stderr ? `:${exit.stderr}` : ''}`);
+      if (exit.code !== 0) return new Error(`worker-exit:${exit.code}${exit.stderr ? `:${exit.stderr}` : ''}`);
+      return null;
+    };
+    const stop = async (err) => { // cancel, timeout, error reply, or the process ended first
+      w.kill();
+      const exit = await withDeadline(w.closed, killWaitMs);
+      report(exit);
+      reject(exit ? err : Object.assign(err, { stillRunning: true }));
+    };
+    const complete = async (result) => { // a successful reply: provisional until the process closed cleanly
+      w.shutdown();
+      let exit = await withDeadline(w.closed, shutdownMs);
+      if (!exit) {
+        w.kill();
+        exit = await withDeadline(w.closed, killWaitMs);
+        report(exit);
+        reject(Object.assign(new Error('worker-exit:did-not-exit-after-reply'), { code: 'worker-shutdown-timeout' }));
+        return;
+      }
+      report(exit);
+      const err = exitError(exit);
+      if (err) reject(err); else resolve(result);
+    };
+    const settle = (fn, v) => {
+      if (settling) return;
+      settling = true;
       clearTimeout(timer);
       signal?.removeEventListener('abort', onAbort);
-      w.kill();
       fn(v);
     };
-    const onAbort = () => end(reject, new CancelledError());
-    const timer = setTimeout(() => end(reject, new TimeoutError(msg.type)), timeoutMs);
+    const onAbort = () => settle(stop, new CancelledError());
+    const timer = setTimeout(() => settle(stop, new TimeoutError(msg.type)), timeoutMs);
     signal?.addEventListener('abort', onAbort, { once: true });
     w.onMessage((m) => {
       if (m?.id !== id) return;
       if (m.progress !== undefined) { onProgress(m.progress); return; }
-      if (m.ok) end(resolve, m.result); else end(reject, new Error(m.error));
+      if (m.ok) settle(complete, m.result); else settle(stop, new Error(m.error));
     });
-    w.onExit((code) => end(reject, /^limit-/.test(String(code)) ? Object.assign(new Error(String(code)), { code: String(code).split(':')[0] }) : new Error(`worker-exited:${code}`)));
+    // The process ended before replying (crash, limit, kill from outside).
+    w.closed.then((exit) => {
+      if (settling) return;
+      settling = true;
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+      report(exit);
+      reject(exitError(exit) || new Error(`worker-exited:${exit.code}`));
+    });
     w.post({ ...msg, id });
   });
 }

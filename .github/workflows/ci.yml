@@ -72,9 +72,12 @@ jobs:
         run: node native/confine/build.cjs
       - name: Electron binary (the confined image worker runs Electron in node mode)
         run: node node_modules/electron/install.js
+      - name: Confinement diagnostics (each isolation mode run directly through the helper)
+        run: node scripts/confine-diagnose.cjs
       # Unit tests, sharp image matrix, 7-Zip archive tests (7-Zip confined in the AppContainer) and
       # the process-tree tests run here; ffmpeg/Poppler/LibreOffice/Calibre directions skip without bin/.
       - run: npm test
+        timeout-minutes: 20
       - run: npm run build
 
   windows-payload:
@@ -124,6 +127,8 @@ jobs:
         run: node native/confine/build.cjs
       - name: Electron binary (the confined image worker runs Electron in node mode)
         run: node node_modules/electron/install.js
+      - name: Confinement diagnostics (each isolation mode run directly through the helper)
+        run: node scripts/confine-diagnose.cjs --out confine-diagnose.json
       - name: Prepare FAT32, exFAT and SMB test locations
         shell: pwsh
         run: |
@@ -141,9 +146,11 @@ jobs:
           "MORPH_TEST_SMB=\\localhost\morphshare" >> $env:GITHUB_ENV
           Get-Volume -DriveLetter R,S | Format-Table DriveLetter,FileSystem,Size | Out-Host
       - name: Confinement on real Windows (D2) before the rest (fail fast; also part of npm test below)
+        timeout-minutes: 45
         shell: bash
         run: node --test --test-reporter=spec test/windows/confinement.test.cjs test/windows/isolation.test.cjs 2>&1 | tee confinement.log; test ${PIPESTATUS[0]} -eq 0
       - name: Tests with the bundled engines (nothing may skip)
+        timeout-minutes: 75
         shell: bash
         run: |
           npm test 2>&1 | tee test.log
@@ -223,6 +230,7 @@ jobs:
             confinement.log
             confinement-measurements.json
             isolation-measurements.json
+            confine-diagnose.json
             signed-files.txt
             native/out/morph-confine.json
           if-no-files-found: warn

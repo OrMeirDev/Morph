@@ -22,7 +22,7 @@ const HELPER = path.join(__dirname, '..', '..', 'native', 'out', 'morph-confine.
 const required = process.env.MORPH_REQUIRE_PAYLOAD === '1';
 const available = process.platform === 'win32' && fs.existsSync(path.join(BIN, 'libreoffice')) && fs.existsSync(HELPER);
 if (required) assert.ok(available, 'bin/ payload and native/out/morph-confine.exe required (MORPH_REQUIRE_PAYLOAD=1)');
-const opts = { skip: !available && 'needs Windows, the bundled engines in bin/ and the built helper', timeout: 600000 };
+const opts = { skip: !available && 'needs Windows, the bundled engines in bin/ and the built helper', timeout: 300000 };
 
 const ps = (cmd) => execFileSync('powershell.exe', ['-NoProfile', '-Command', cmd], { encoding: 'utf8' }).trim();
 function processesUnder(sub) {
@@ -50,6 +50,7 @@ const run = (name, args, ws, o = {}) => S.tools.run(name, args, { timeoutMs: 120
 
 test('confinement is enforced and every engine passed its probe confined', opts, () => {
   const st = S.tools.status();
+  console.log('probe results:', JSON.stringify(st.details)); // printed before any assertion, for diagnosis
   assert.equal(st.confinement.mode, 'enforced', st.confinement.reason);
   for (const [name, d] of Object.entries(st.details)) assert.ok(d.ok, `${name}: ${d.reason}`);
   console.log('confinement per tool:', JSON.stringify(st.confinement.tools));
@@ -119,6 +120,9 @@ test('a confined engine has no network: loopback and internet both fail, while t
   try {
     const control = await fetch(url).then((r) => r.text());
     assert.equal(control, 'hello', 'control: the server answers the host');
+    // Control: ffmpeg itself runs confined, so a failure below is the network, not a broken engine.
+    const v = await run('ffmpeg', ['-hide_banner', '-version'], ws, { captureStdout: true });
+    assert.match(v.stdout, /ffmpeg version/, 'control: ffmpeg runs in the AppContainer');
     const before = hits;
     await assert.rejects(run('ffmpeg', ['-hide_banner', '-nostdin', '-rw_timeout', '5000000', '-i', url, '-f', 'null', '-'], ws));
     assert.equal(hits, before, 'the confined engine never reached the loopback server');
