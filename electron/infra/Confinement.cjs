@@ -158,7 +158,14 @@ class Confinement {
       for (const w of [workspace, ...write]) h.push('--write', w);
     } else if (t.isolation === 'low-integrity') {
       h.push('--low-integrity');
-      if (t.restrictWrites) h.push('--restrict-writes', jobName('Morph.Writes', workspace));
+      if (t.restrictWrites || t.restrictReads) h.push('--restrict-writes', jobName('Morph.Writes', workspace));
+      if (t.restrictReads) {
+        // Every access restricted: the engine reads its own folder (and given folders Morph owns)
+        // through a shared read SID; system files through Users/Everyone; not the user's files.
+        h.push('--restrict-reads');
+        const roots = [this.engineRoot(exe), ...read.filter((r) => this.ownedRoots.some((o) => r === o || isInside(path.resolve(r), o)))].filter(Boolean);
+        for (const r of [...new Set(roots)]) h.push('--read', r);
+      }
       if (t.console) h.push('--console', t.console);
       for (const w of [workspace, ...write]) h.push('--write', w);
     }

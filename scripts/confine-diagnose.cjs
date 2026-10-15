@@ -67,23 +67,32 @@ for (const [name, c] of cases) {
     run(`${name} (low-integrity${flip[c.tool].restrictWrites ? ', write-restricted' : ''})`, { ...c, tools: flip, shipped: false });
   }
 }
-// Low-integrity launch matrix (information): which start context and console setting lets the Low
-// tier initialise, with a system program as control. Measured to choose the shipped setting.
+// Low-integrity variants (information, measured to choose the shipped policy): real conversions
+// and read canaries, each with the token Low only / write-restricted / read-restricted (every
+// access restricted: the engine may read system files and its own folder, not the user's files)
+// and with a new console or the helper's. cmd.exe reads the canaries: a file in the user profile
+// (only the user, SYSTEM and Administrators may read it) and C:\\Windows\\win.ini (Users may).
 const SYS = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32');
-const lowCases = [
-  ['cmd /c ver', { tool: 'soffice', exe: path.join(SYS, 'cmd.exe'), args: ['/c', 'ver'] }],
-  ['soffice --version', engine('soffice', 'libreoffice/program/soffice.com', ['--headless', '--version'])],
-  ['ebook-convert --version', engine('calibre', 'calibre/ebook-convert.exe', ['--version'])],
+const canary = path.join(os.homedir(), `morph-canary-${process.pid}.txt`);
+fs.writeFileSync(canary, 'CANARY-SECRET');
+const variantCases = [
+  ['read user-profile canary', { tool: 'soffice', exe: path.join(SYS, 'cmd.exe'), args: ['/c', 'type', canary] }, /CANARY-SECRET/],
+  ['read C:\\Windows\\win.ini', { tool: 'soffice', exe: path.join(SYS, 'cmd.exe'), args: ['/c', 'type', path.join(process.env.SystemRoot || 'C:\\Windows', 'win.ini')] }, /fonts/i],
+  ['LibreOffice DOCX -> PDF', { ...engine('soffice', 'libreoffice/program/soffice.com', []),
+    args: (ws) => ['--headless', '--norestore', `-env:UserInstallation=${require('url').pathToFileURL(path.join(ws, 'profile')).href}`, '--convert-to', 'pdf', '--outdir', ws, path.join(ROOT, 'test', 'corpus', 'benyehuda-5452-ani-maamin.docx')] }, null],
+  ['Calibre EPUB -> MOBI', { ...engine('calibre', 'calibre/ebook-convert.exe', []),
+    args: (ws) => [path.join(ROOT, 'test', 'corpus', 'gutenberg-11-alice.epub'), path.join(ws, 'out.mobi')] }, null],
 ];
-for (const [name, c] of lowCases) {
+for (const [name, c, expect] of variantCases) {
   if (!fs.existsSync(c.exe)) continue;
-  for (const consoleMode of ['new', 'detached', 'inherit']) {
-    for (const keep of [false, true]) {
-      run(`matrix: ${name} (low-integrity, console ${consoleMode}${keep ? ', Administrators kept' : ''})`, { ...c, shipped: false, timeoutMs: 45000, flags: ['--console', consoleMode, ...(keep ? ['--diag-keep-admins'] : [])] });
+  for (const [label, extra] of [['Low only', {}], ['write-restricted', { restrictWrites: true }], ['read-restricted', { restrictReads: true }]]) {
+    for (const consoleMode of ['new', 'inherit']) {
+      const tools = { ...policy.tools, [c.tool]: { ...policy.tools[c.tool], restrictWrites: false, restrictReads: false, ...extra, console: consoleMode } };
+      run(`variant: ${name} (${label}, console ${consoleMode})`, { ...c, tools, expect, shipped: false, timeoutMs: expect ? 30000 : 120000 });
     }
   }
-  if (fs.existsSync(BASH)) run(`matrix: ${name} (low-integrity, console new, started through Git Bash)`, { ...c, shipped: false, timeoutMs: 45000, viaBash: true });
 }
+fs.rmSync(canary, { force: true });
 const rt = workerRuntime();
 if (rt) {
   run('image worker runtime: Electron as node in the AppContainer', { tool: 'imageworker', exe: rt.exe, args: [...(rt.args || []), '-e', 'console.log("node " + process.version)'], env: rt.env, read: workerReadRoots(rt) });

@@ -16,6 +16,11 @@
 //   --restrict-writes <name> with --low-integrity: also make the token write-restricted to a SID
 //                          derived from <name> (per job), so it may write only where that SID is
 //                          granted (the --write paths), not into other Low folders
+//   --restrict-reads       with --restrict-writes: the restriction covers every access, reads
+//                          included. Restricting SIDs: the job's, a shared engines-read SID
+//                          (granted read on the --read paths), Users, Everyone and RESTRICTED, so
+//                          the engine reads system files (granted to Users) but not files granted
+//                          only to the user (the profile: Documents, Desktop, AppData)
 //   --low-integrity        instead of an AppContainer (for engines that cannot run in one): a
 //                          restricted copy of the caller's token at Low integrity, all privileges
 //                          but traverse dropped, Administrators deny-only. Windows then refuses
@@ -24,8 +29,6 @@
 //                          window station and desktop of its own (see privateDesktop)
 //   --console new|detached|inherit  the engine's console: a new hidden one (default), none, or this
 //                          process's
-//   --diag-keep-admins     diagnostics only (scripts/confine-diagnose.cjs): with --low-integrity,
-//                          leave the Administrators group enabled; never used by Morph
 //   --read <path>          AppContainer: grant read + execute on <path> (inherited by children)
 //   --write <path>         AppContainer: grant modify on <path>; low integrity: label <path> Low
 //                          so the engine may write there (both inherited by children)
@@ -70,7 +73,7 @@ typedef struct {
   const wchar_t *restrictWrites;
   int lowIntegrity;
   const wchar_t *console; // new (default) | detached | inherit
-  int diagKeepAdmins;     // diagnostics only: do not make Administrators deny-only
+  int restrictReads;      // with --restrict-writes: restrict every access, reads included
   const wchar_t *read[MAX_GRANTS];
   int nRead;
   const wchar_t *write[MAX_GRANTS];
@@ -91,6 +94,7 @@ typedef struct {
   int appContainer;
   int lowIntegrity;
   int writeRestricted;
+  int readRestricted;
   int privateDesktop;
   int profileDeleted;
   DWORD profileMs;
@@ -129,9 +133,9 @@ static void writeStats(const Options *o, HANDLE job) {
   }
   FILE *f = _wfopen(o->stats, L"wb");
   if (!f) return;
-  fprintf(f, "{\"outcome\":\"%s\",\"exitCode\":%lu,\"appContainer\":%s,\"lowIntegrity\":%s,\"writeRestricted\":%s,\"privateDesktop\":%s,\"sid\":\"", R.outcome,
+  fprintf(f, "{\"outcome\":\"%s\",\"exitCode\":%lu,\"appContainer\":%s,\"lowIntegrity\":%s,\"writeRestricted\":%s,\"readRestricted\":%s,\"privateDesktop\":%s,\"sid\":\"", R.outcome,
           (unsigned long)R.exitCode, R.appContainer ? "true" : "false", R.lowIntegrity ? "true" : "false", R.writeRestricted ? "true" : "false",
-          R.privateDesktop ? "true" : "false");
+          R.readRestricted ? "true" : "false", R.privateDesktop ? "true" : "false");
   jsonEscape(f, R.sid);
   fprintf(f, "\",\"error\":\"");
   jsonEscape(f, R.error);
@@ -152,9 +156,9 @@ static int parseArgs(int argc, wchar_t **argv, Options *o) {
   for (int i = 1; i < argc; i++) {
     const wchar_t *a = argv[i];
     const wchar_t *v = i + 1 < argc ? argv[i + 1] : NULL;
-    if (!wcscmp(a, L"--")) { o->argStart = i + 1; return o->argStart < argc && !(o->appContainer && o->lowIntegrity); }
+    if (!wcscmp(a, L"--")) { o->argStart = i + 1; return o->argStart < argc && !(o->appContainer && o->lowIntegrity) && (!o->restrictReads || o->restrictWrites); }
     if (!wcscmp(a, L"--low-integrity")) { o->lowIntegrity = 1; continue; }
-    if (!wcscmp(a, L"--diag-keep-admins")) { o->diagKeepAdmins = 1; continue; }
+    if (!wcscmp(a, L"--restrict-reads")) { o->restrictReads = 1; continue; }
     if (!wcscmp(a, L"--ephemeral")) { o->ephemeral = 1; continue; }
     if (!v) return 0;
     if (!wcscmp(a, L"--appcontainer")) o->appContainer = v;
@@ -267,9 +271,21 @@ done:
   return result;
 }
 
+// A SID under the Resource Manager authority (S-1-9-...) from a hash of `name`. (An
+// AppContainer-type SID is refused as a restricting SID: CreateRestrictedToken error 87, measured
+// in run 38710200535.)
+static PSID nameSid(const wchar_t *name) {
+  DWORD h[4] = { 2166136261u, 16777619u, 0x9e3779b9u, 0x85ebca6bu };
+  for (const wchar_t *c = name; *c; c++) for (int k = 0; k < 4; k++) h[k] = (h[k] ^ (DWORD)*c) * (16777619u + 2u * (DWORD)k);
+  SID_IDENTIFIER_AUTHORITY rm = SECURITY_RESOURCE_MANAGER_AUTHORITY;
+  PSID sid = NULL;
+  if (!AllocateAndInitializeSid(&rm, 5, 0x4D6F7270u /* "Morp" */, h[0], h[1], h[2], h[3], 0, 0, 0, &sid)) return NULL;
+  return sid;
+}
+
 // A restricted, Low-integrity copy of this process's token for engines that cannot run in an
 // AppContainer. NULL on failure (error recorded).
-static HANDLE lowToken(PSID restrictTo, int keepAdmins) {
+static HANDLE lowToken(PSID restrictTo, PSID readSid) {
   HANDLE self = NULL, restricted = NULL;
   if (!OpenProcessToken(GetCurrentProcess(), TOKEN_DUPLICATE | TOKEN_QUERY | TOKEN_ASSIGN_PRIMARY | TOKEN_ADJUST_DEFAULT, &self)) {
     setError("OpenProcessToken", GetLastError());
@@ -285,9 +301,16 @@ static HANDLE lowToken(PSID restrictTo, int keepAdmins) {
   BYTE restrictedSid[SECURITY_MAX_SID_SIZE];
   DWORD n3 = sizeof restrictedSid;
   CreateWellKnownSid(WinRestrictedCodeSid, NULL, restrictedSid, &n3);
-  SID_AND_ATTRIBUTES restricting[2] = { { restrictTo, 0 }, { (PSID)restrictedSid, 0 } };
-  DWORD flags = DISABLE_MAX_PRIVILEGE | (restrictTo ? WRITE_RESTRICTED : 0);
-  if (!CreateRestrictedToken(self, flags, keepAdmins ? 0 : 1, keepAdmins ? NULL : &denyOnly, 0, NULL, restrictTo ? 2 : 0, restrictTo ? restricting : NULL, &restricted)) {
+  // Read-restricted (readSid): no WRITE_RESTRICTED flag, so every access check must also pass for
+  // one of these, plus the shared read SID, Users and Everyone (system files are granted to Users).
+  BYTE users[SECURITY_MAX_SID_SIZE], everyone[SECURITY_MAX_SID_SIZE];
+  DWORD n5 = sizeof users, n6 = sizeof everyone;
+  CreateWellKnownSid(WinBuiltinUsersSid, NULL, users, &n5);
+  CreateWellKnownSid(WinWorldSid, NULL, everyone, &n6);
+  SID_AND_ATTRIBUTES restricting[5] = { { restrictTo, 0 }, { (PSID)restrictedSid, 0 }, { readSid, 0 }, { (PSID)users, 0 }, { (PSID)everyone, 0 } };
+  DWORD nRestricting = !restrictTo ? 0 : readSid ? 5 : 2;
+  DWORD flags = DISABLE_MAX_PRIVILEGE | (restrictTo && !readSid ? WRITE_RESTRICTED : 0);
+  if (!CreateRestrictedToken(self, flags, 1, &denyOnly, 0, NULL, nRestricting, nRestricting ? restricting : NULL, &restricted)) {
     setError("CreateRestrictedToken", GetLastError());
     CloseHandle(self);
     return NULL;
@@ -550,18 +573,13 @@ int wmain(int argc, wchar_t **argv) {
     R.appContainer = 1;
   }
   HANDLE token = NULL;
-  PSID writeSid = NULL;
+  PSID writeSid = NULL, readSid = NULL;
   wchar_t desktop[96] = { 0 };
   if (o.lowIntegrity) {
     ULONGLONG t0 = GetTickCount64();
     if (o.restrictWrites) {
-      // A per-job SID under the Resource Manager authority (S-1-9-...), from a hash of the name.
-      // (An AppContainer-type SID is refused as a restricting SID: CreateRestrictedToken error 87,
-      // measured in run 38710200535.)
-      DWORD h[4] = { 2166136261u, 16777619u, 0x9e3779b9u, 0x85ebca6bu };
-      for (const wchar_t *c = o.restrictWrites; *c; c++) for (int k = 0; k < 4; k++) h[k] = (h[k] ^ (DWORD)*c) * (16777619u + 2u * (DWORD)k);
-      SID_IDENTIFIER_AUTHORITY rm = SECURITY_RESOURCE_MANAGER_AUTHORITY;
-      if (!AllocateAndInitializeSid(&rm, 5, 0x4D6F7270u /* "Morp" */, h[0], h[1], h[2], h[3], 0, 0, 0, &writeSid)) {
+      writeSid = nameSid(o.restrictWrites); // per job
+      if (!writeSid) {
         setError("AllocateAndInitializeSid(restrict)", GetLastError());
         return (int)finish(&o, job, MC_EXIT_SETUP);
       }
@@ -583,8 +601,22 @@ int wmain(int argc, wchar_t **argv) {
         snprintf(R.unprotected + used, sizeof R.unprotected - used, "%s%s", used ? ";" : "", p);
       }
     }
+    if (o.restrictReads) {
+      readSid = nameSid(L"Morph.Engines.Read"); // shared by every job, granted once per folder
+      for (int i = 0; readSid && i < o.nRead; i++) {
+        DWORD err = 0;
+        if (grant(o.read[i], readSid, FILE_GENERIC_READ | FILE_GENERIC_EXECUTE, &err) < 0) {
+          char p[400];
+          toUtf8(o.read[i], p, sizeof p);
+          snprintf(R.error, sizeof R.error, "granting read on %s failed (Windows error %lu)", p, (unsigned long)err);
+          return (int)finish(&o, job, MC_EXIT_SETUP);
+        }
+      }
+      if (!readSid) { setError("AllocateAndInitializeSid(read)", GetLastError()); return (int)finish(&o, job, MC_EXIT_SETUP); }
+    }
     R.grantMs = (DWORD)(GetTickCount64() - t0);
-    token = lowToken(writeSid, o.diagKeepAdmins);
+    token = lowToken(writeSid, readSid);
+    R.readRestricted = readSid != NULL;
     R.writeRestricted = writeSid != NULL;
     if (!token) return (int)finish(&o, job, MC_EXIT_SETUP);
     R.lowIntegrity = 1;

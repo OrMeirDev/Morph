@@ -125,6 +125,20 @@ test('enforced, low-integrity engines: Low token, Low labels on the workspace an
   assert.match(c.status().notes.join(' '), /Low integrity/);
 });
 
+test('low-integrity with restrictReads: job SID, --restrict-reads, read grant only on the engine\'s own folder', () => {
+  const root = tmpDir('conf-rr');
+  const bin = path.join(root, 'bin');
+  const ws = path.join(root, 'ws');
+  fs.mkdirSync(ws);
+  const tools = { ...policy.tools, soffice: { ...policy.tools.soffice, restrictReads: true } };
+  const c = new Confinement({ platform: 'win32', helper: process.execPath, disabled: false, ownedRoots: [bin], tools });
+  const p = c.prepare('soffice', path.join(bin, 'libreoffice', 'program', 'soffice.com'), ['--version'], { workspace: ws, read: ['C:\\Windows'] });
+  const opts = p.args.slice(0, p.args.indexOf('--'));
+  assert.ok(opts.includes('--low-integrity') && opts.includes('--restrict-reads'));
+  assert.match(argAfter(opts, '--restrict-writes')[0], /^Morph\.Writes\.[0-9a-f]{24}$/);
+  assert.deepEqual(argAfter(opts, '--read'), [path.join(bin, 'libreoffice')], 'never a system folder');
+});
+
 test('MORPH_CONFINE_LIMITS overrides only known tools with positive integers', () => {
   const base = { soffice: { jobMemoryMb: 100, maxProcesses: 5 } };
   assert.deepEqual(withOverrides(base, '{"soffice":{"jobMemoryMb":4096},"nope":{"jobMemoryMb":1}}').soffice, { jobMemoryMb: 4096, maxProcesses: 5 });
