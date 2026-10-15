@@ -46,26 +46,42 @@ Generated fixtures are made at test time; the only files kept in git are the rea
 a feature Morph controls survives; a corpus file proves a document nobody made for these tests
 converts and keeps its text. Neither proves every possible file.
 
-## Results (CI on dbe853f, run 38631238070)
+## Results (CI on 92ee37c, run 38766954377)
 
-| Job | Result |
-| --- | --- |
-| Checks and engine matrix (Linux) | imports; `npm test` 177 passed, 0 failed (the 8 Windows-only payload tests skip on Linux by design); engine matrix 79/79 with no direction skipped (Ubuntu's ffmpeg, Poppler, LibreOffice, Calibre, 7-Zip, not the shipped versions); build; no test hook in the bundle; runtime `npm audit` 0; Electron e2e flow 15/15 |
-| Checks (Windows, no bundled engines) | `npm test` 122 passed, 0 failed (37 engine tests skip: this job deliberately has no engines; the payload job runs them); build |
-| Bundled engines, packaged app and installer (Windows) | rows 1–8 below |
+Passes and skips are listed separately; every skip below is by design of that job, and the
+bundled-engines job allows none.
+
+| Job | Passed | Failed | Skipped |
+| --- | --- | --- | --- |
+| Checks and engine matrix (Linux): `npm test` | 216 | 0 | 34 (Windows-only payload and confinement tests) |
+| Checks and engine matrix (Linux): engine matrix (Ubuntu's ffmpeg, Poppler, LibreOffice, Calibre, 7-Zip, not the shipped versions) | 79 | 0 | 0 |
+| Checks and engine matrix (Linux): Electron e2e flow | 15 | 0 | — |
+| Checks (Windows, no bundled engines): `npm test` | 153 | 0 | 71 (engine and payload tests: this job deliberately has no engines) |
+| Bundled engines (Windows): confinement + isolation step | 26 | 0 | 0 |
+| Bundled engines (Windows): `npm test` with the bundled `bin/` | 250 | 0 | 0 |
+| Bundled engines (Windows): packaged app smoke | 19 | 0 | — |
+| Bundled engines (Windows): installer over 1.0.3 (installed-copy smoke 21/21) | 9 | 0 | — |
+| Bundled engines (Windows): in-app auto-update (updated-app smoke 21/21) | 19 | 0 | — |
+
+Also in that run: imports and module boundaries; build; no test hook in the bundle; runtime
+`npm audit` 0; confinement diagnostics `--strict` from PowerShell (every shipped mode converts,
+0 job profiles left); payload identical to `bin-manifest.json` before and after the tests; signing
+selection (`Morph.exe`, `morph-confine.exe`, installer, uninstaller, `elevate.exe`; nothing from
+`resources\bin`); signature check **pending** (both `NotSigned`, no certificate).
 
 `docs/FORMATS.md`: 69 of 69 conversion directions engine-tested (structure and content checked inside
 the outputs of generated fixtures). This is not proof of perfect fidelity or of every real-world file;
 known losses are listed there and shown in the app when the user picks that target.
 
 Evidence: the payload job's `windows-payload-evidence` artifact (`engines.resolved.json`,
-`bin-manifest.ci.json`, `bin/ENGINES.json`, `test.log`, `signature.json`, `smoke.json`,
-`installer.json`, `autoupdate.json`). Commits after dbe853f on the branch change documentation only;
-the PR description names the run on the head commit.
+`bin-manifest.ci.json`, `bin/ENGINES.json`, `test.log`, `confinement.log`,
+`confine-diagnose.json`, `isolation-measurements.json`, `signed-files.txt`, `signature.json`,
+`smoke.json`, `installer.json`, `autoupdate.json`). Later commits on the branch change
+documentation only; the PR description names the run on the head commit.
 
 ## Windows checks
 
-Tested commit dbe853f, CI run 38631238070. GitHub `windows-latest` = Windows Server 2025 (image
+Tested commit 92ee37c, CI run 38766954377. GitHub `windows-latest` = Windows Server 2025 (image
 `windows-2025-vs2026`), x64, Node 22, Electron 44.5.1. Engines, all pinned in
 `scripts/engines.lock.json` (URL + SHA-256) and verified byte for byte against `bin-manifest.json`
 (12,529 files) before and after the tests: FFmpeg 9.0.2 (gyan.dev essentials), 7-Zip 26.03,
@@ -75,13 +91,13 @@ behaviour, a code-signing certificate or a published release stays Pending and i
 
 | # | Check | Status | Evidence / what is still open |
 | --- | --- | --- | --- |
-| 1 | Engine tests: `npm test` with the bundled `bin/`, nothing skipped (Calibre included) | **Pass** | `test.log`: 185 passed, 0 failed, 0 skipped; probe reports the versions above |
+| 1 | Engine tests: `npm test` with the bundled `bin/`, nothing skipped (Calibre included), every engine confined | **Pass** | `test.log`: 250 passed, 0 failed, 0 skipped; probe reports the versions above |
 | 2 | Stop mid-conversion ends the whole tree (LibreOffice `soffice.com` → `soffice.bin`; Calibre `ebook-convert` → `calibre-parallel`), no output, no staging | **Pass** | `payload.test`: the engine's real worker process is seen (matched by executable path under `bin\`), Stop is pressed, none is left; cancelled state; the next conversion works |
 | 3 | Office profile: path at the 100-character limit, Hebrew names, first start cancelled, damaged profile | **Pass** | `payload.test`: Stop inside `soffice --terminate_after_init` leaves the profile unmarked and no process, then converts; damaged registry rebuilt; long Hebrew base converts, longer falls back; Hebrew and ~200-character paths through all six engines |
 | 4 | Publication on NTFS, FAT32, exFAT and a network share, existing output name | **Pass** on virtual disks and a local SMB share / **Pending**: a real USB stick and antivirus file locks | `payload.test` on `R:` FAT32 and `S:` exFAT VHDs and `\\localhost\morphshare`: `pic (1).webp`, `pic (2).webp`, original kept, no staging; NTFS throughout |
-| 5 | Packaged app: utilityProcess worker with sharp's native binding from `app.asar.unpacked`, CSP, probe time | **Pass** / **Pending**: drag and drop from Explorer (needs an interactive desktop) | `smoke.json`: 18/18, every engine converted inside the packaged app, no CSP violations, tool status 0.7–1.1 s after launch |
-| 6 | Installer: 1.0.3 → this build by running the installer, settings and history kept and migrated, uninstall | **Pass** | `installer.json`: 9/9 (installed copy smoke 20/20 with the seeded settings and history; uninstall removes program and registration, keeps user data) |
-| 7 | In-app auto-update with the real updater from a controlled feed, during a running conversion | **Pass** (controlled local feed) / **Pending**: from a published GitHub release (F3, after the first real release) | `autoupdate.json`: 19/19. Installed 1.0.4 with seeded settings and v0 history; the real electron-updater found 1.0.5 on the 127.0.0.1 feed, downloaded and verified it; LibreOffice (`soffice.com`, `soffice.bin`) was converting when "restart to update" ran; the window received `queued → preparing → converting → cancelled`; crash journal empty at quit; 1.0.5 registered; the app restarted by itself; feed log shows `Morph-Setup-1.0.5.exe` fetched; no output, staging or LibreOffice process left; packaged smoke on the updated app 20/20 with the same settings; history kept in the v1 format. Nothing was published; no mock |
+| 5 | Packaged app: utilityProcess worker with sharp's native binding from `app.asar.unpacked`, CSP, probe time | **Pass** / **Pending**: drag and drop from Explorer (needs an interactive desktop) | `smoke.json`: 19/19, confinement enforced (detection, image worker and every engine confined), every engine converted inside the packaged app, no CSP violations |
+| 6 | Installer: 1.0.3 → this build by running the installer, settings and history kept and migrated, uninstall | **Pass** | `installer.json`: 9/9 (installed copy smoke 21/21 with the seeded settings and history; uninstall removes program and registration, keeps user data) |
+| 7 | In-app auto-update with the real updater from a controlled feed, during a running conversion | **Pass** (controlled local feed) / **Pending**: from a published GitHub release (F3, after the first real release) | `autoupdate.json`: 19/19 (confinement enforced). Installed 1.0.4 with seeded settings and v0 history; the real electron-updater found 1.0.5 on the 127.0.0.1 feed, downloaded and verified it; LibreOffice (`soffice.com`, `soffice.bin`) was converting when "restart to update" ran; the window received `queued → preparing → converting → cancelled`; crash journal empty at quit; 1.0.5 registered; the app restarted by itself; feed log shows `Morph-Setup-1.0.5.exe` fetched; no output, staging or LibreOffice process left; packaged smoke on the updated app 21/21 with the same settings; history kept in the v1 format. Nothing was published; no mock |
 | 8 | Signed installer and app with the expected publisher | **Pending** (no certificate) | `signature.json`: both `NotSigned`; the step succeeds because it reports pending, which is not a pass. Missing inputs: `docs/RELEASING.md` §5 |
 | 9 | Document fidelity with the bundled Windows LibreOffice; real-world files | **Pass** for the generated fixtures / **Pending**: a real-world corpus (embedded fonts, images, tracked changes, scanned PDFs) | `documents.test` and `ebooks.test` ran against LibreOffice 26.2.6.3 and Calibre 9.15.0 in this job |
 
