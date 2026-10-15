@@ -1,7 +1,8 @@
 // Diagnostics for D2 on Windows: runs morph-confine.exe directly with each isolation mode Morph
 // uses and prints the exit code, the helper's statistics and stderr for each. Use it when engines
 // report "unavailable" or confined runs fail; CI runs it before the tests (output in the evidence).
-//   node scripts/confine-diagnose.cjs [--out confine-diagnose.json]
+//   node scripts/confine-diagnose.cjs [--out confine-diagnose.json] [--strict]
+// --strict: exit 1 if any mode fails or a profile is left behind (CI: fail in minutes, not hours).
 const { spawnSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
@@ -68,3 +69,4 @@ const left = spawnSync(HELPER, ['--list-profiles', 'Morph.Diag.'], { encoding: '
 console.log(`profiles left by the runs above: ${left ? left.split(/\r?\n/).length : 0}`);
 results.push({ name: 'profiles left', left });
 if (outFile) fs.writeFileSync(outFile, JSON.stringify(results, null, 2));
+if (process.argv.includes('--strict') && (results.some((r) => r.status !== undefined && r.status !== 0) || left)) process.exit(1);

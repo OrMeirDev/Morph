@@ -73,7 +73,7 @@ jobs:
       - name: Electron binary (the confined image worker runs Electron in node mode)
         run: node node_modules/electron/install.js
       - name: Confinement diagnostics (each isolation mode run directly through the helper)
-        run: node scripts/confine-diagnose.cjs
+        run: node scripts/confine-diagnose.cjs --strict
       # Unit tests, sharp image matrix, 7-Zip archive tests (7-Zip confined in the AppContainer) and
       # the process-tree tests run here; ffmpeg/Poppler/LibreOffice/Calibre directions skip without bin/.
       - run: npm test
@@ -128,7 +128,7 @@ jobs:
       - name: Electron binary (the confined image worker runs Electron in node mode)
         run: node node_modules/electron/install.js
       - name: Confinement diagnostics (each isolation mode run directly through the helper)
-        run: node scripts/confine-diagnose.cjs --out confine-diagnose.json
+        run: node scripts/confine-diagnose.cjs --out confine-diagnose.json --strict
       - name: Prepare FAT32, exFAT and SMB test locations
         shell: pwsh
         run: |
