@@ -78,7 +78,8 @@ test('a confined engine cannot write outside its workspace: the OS denies it (ca
     // a Low-integrity write to anything not labelled Low, whatever the folder's permissions say.
     fs.mkdirSync(ws.file('profile'));
     const odt = makeRichOdt(ws.file('in.odt'));
-    await run('soffice', ['--headless', '--norestore', '--nologo', `-env:UserInstallation=${pathToFileURL(ws.file('profile')).href}`, '--convert-to', 'pdf', '--outdir', outside, odt], ws, { write: [ws.file('profile')], timeoutMs: 300000 }).catch(() => {});
+    // A refused write does not make LibreOffice exit; it waits until the deadline ends it (measured).
+    await run('soffice', ['--headless', '--norestore', '--nologo', `-env:UserInstallation=${pathToFileURL(ws.file('profile')).href}`, '--convert-to', 'pdf', '--outdir', outside, odt], ws, { write: [ws.file('profile')], timeoutMs: 60000 }).catch(() => {});
     assert.deepEqual(fs.readdirSync(outside).sort(), ['canary.png'], 'LibreOffice wrote nothing outside the workspace');
     await run('soffice', ['--headless', '--norestore', '--nologo', `-env:UserInstallation=${pathToFileURL(ws.file('profile')).href}`, '--convert-to', 'pdf', '--outdir', ws.file('out'), odt], ws, { write: [ws.file('profile')], timeoutMs: 300000 });
     assert.ok(fs.existsSync(ws.file('out/in.pdf')), 'control: the same conversion into the workspace works');
@@ -225,9 +226,9 @@ for (const [label, env] of [['FAT32', 'MORPH_TEST_FAT32'], ['exFAT', 'MORPH_TEST
       fs.writeFileSync(path.join(dir, 'canary.png'), 'CANARY');
       fs.mkdirSync(ws.file('profile'));
       const odt = makeRichOdt(ws.file('in.odt'));
-      await run('soffice', ['--headless', '--norestore', '--nologo', `-env:UserInstallation=${pathToFileURL(ws.file('profile')).href}`, '--convert-to', 'pdf', '--outdir', dir, odt], ws, { write: [ws.file('profile')], timeoutMs: 300000 }).catch(() => {});
+      const lo = await run('soffice', ['--headless', '--norestore', '--nologo', `-env:UserInstallation=${pathToFileURL(ws.file('profile')).href}`, '--convert-to', 'pdf', '--outdir', dir, odt], ws, { write: [ws.file('profile')], timeoutMs: 60000 }).then(() => 'exited', (e) => e.code || e.message.slice(0, 80));
       const loWrote = fs.existsSync(path.join(dir, 'in.pdf'));
-      recordMeasurement({ volume: label, ffmpegAppContainer: { result: ff, canaryChanged: ffChanged }, libreofficeLowIntegrity: { wroteOutput: loWrote } });
+      recordMeasurement({ volume: label, ffmpegAppContainer: { result: ff, canaryChanged: ffChanged }, libreofficeLowIntegrity: { result: lo, wroteOutput: loWrote } });
       assert.equal(ffChanged, ff === 'written', 'the canary changed exactly when ffmpeg reported success');
     } finally { await ws.cleanup(); fs.rmSync(dir, { recursive: true, force: true }); }
   });

@@ -24,25 +24,26 @@ const tools = {
   },
 };
 
-// Limits per Job Object. Rule: 8 x the largest peak measured on the stress fixtures, rounded up
-// to 256 MiB, at least 1024 MiB; processes: at least 6 x the most seen at once. The measured peaks
-// (job-wide committed memory) are recorded with each value. Override for diagnostics with
+// Limits per Job Object, from the stress fixtures in test/windows/confinement.test.cjs (peak
+// job-wide committed memory, run 38684568676 on windows-latest). Rule: 4 x the stress peak, rounded
+// up to 512 MiB, at least 1024 MiB; processes: at least 4 x the most seen at once. The test fails if
+// any stress peak leaves less than 2x headroom. Override for diagnostics or unusually large files:
 // MORPH_CONFINE_LIMITS='{"soffice":{"jobMemoryMb":4096}}'.
 const limits = {
-  // ffmpeg: 159 MiB (640x360 H.264 + AAC encode), 143 MiB (VP9 + Opus); 4K stress: see test log
-  ffmpeg: { jobMemoryMb: 4096, maxProcesses: 16 },
+  // 4K H.264 encode 1634 MiB (VP9 1200 MiB); 2 processes
+  ffmpeg: { jobMemoryMb: 6656, maxProcesses: 16 },
   ffprobe: { jobMemoryMb: 1024, maxProcesses: 16 },
-  // 7-Zip: 14 MiB measured; LZMA/LZMA2 decompression needs the archive's dictionary size, up to
-  // 1536 MiB for 7-Zip's own Ultra preset, so the floor is set by the format, not the fixture.
+  // 128 MiB into .7z: 380 MiB. Floor set by the format instead: LZMA/LZMA2 decompression needs the
+  // archive's dictionary, up to 1536 MiB for 7-Zip's own Ultra preset.
   sevenzip: { jobMemoryMb: 2048, maxProcesses: 16 },
-  // Poppler: 4-6 MiB measured on letter-size pages; a large page at 200 dpi is a few hundred MiB.
+  // A0 page at 200 dpi: 242 MiB
   pdftoppm: { jobMemoryMb: 1024, maxProcesses: 16 },
   pdftotext: { jobMemoryMb: 1024, maxProcesses: 16 },
   pdfinfo: { jobMemoryMb: 1024, maxProcesses: 16 },
-  // LibreOffice: 87-93 MiB small documents, 394 MiB for a 40,000-paragraph document -> 3328 MiB.
-  soffice: { jobMemoryMb: 3328, maxProcesses: 24 },
-  // Calibre: 72-81 MiB, 174 MiB EPUB -> PDF (Qt WebEngine, 5 processes at once) -> 1536 MiB.
-  calibre: { jobMemoryMb: 1536, maxProcesses: 32 },
+  // 40,000-paragraph document to PDF: 395 MiB; 3 processes at once
+  soffice: { jobMemoryMb: 2048, maxProcesses: 16 },
+  // 120-chapter book to PDF (Qt WebEngine): 1218 MiB, 7 processes at once
+  calibre: { jobMemoryMb: 5120, maxProcesses: 32 },
 };
 
 const defaults = { jobMemoryMb: 2048, maxProcesses: 16 };
@@ -51,6 +52,7 @@ const defaults = { jobMemoryMb: 2048, maxProcesses: 16 };
 const notes = [
   'LibreOffice and Calibre run at Low integrity: they cannot write to your files, but can read them and use the network.',
   'Image work (sharp) and file detection run in Morph\'s own worker process, which is separate but not OS-confined.',
+  'FAT32/exFAT drives have no permissions: an engine can write anywhere on such a drive (measured, run 38684568676).',
 ];
 
 // Test-only values (test/windows/confinement.test.cjs): a LibreOffice limit far below the
