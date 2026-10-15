@@ -39,6 +39,8 @@ async function until(fn, ms = 60000, step = 100) {
   for (;;) { const v = await fn(); if (v) return v; if (Date.now() - t0 > ms) return null; await new Promise((r) => setTimeout(r, step)); }
 }
 const noStaging = (dir) => fs.readdirSync(dir).filter((n) => n.startsWith('.~morph-'));
+// Tests that count engine processes start from none, so a leftover is reported where it came from.
+const startClean = (sub) => assert.deepEqual(processesUnder(sub), [], `no ${sub} process left over from an earlier test`);
 
 let S;
 test.before(async () => { if (!available) return; S = createStack('win-confine'); await S.tools.probe(); });
@@ -82,19 +84,26 @@ test('a confined engine cannot write outside its workspace: the OS denies it (ca
     // A refused write does not make LibreOffice exit; it waits until the deadline ends it (measured).
     await run('soffice', ['--headless', '--norestore', '--nologo', `-env:UserInstallation=${pathToFileURL(ws.file('profile')).href}`, '--convert-to', 'pdf', '--outdir', outside, odt], ws, { write: [ws.file('profile')], timeoutMs: 60000 }).catch(() => {});
     assert.deepEqual(fs.readdirSync(outside).sort(), ['canary.png'], 'LibreOffice wrote nothing outside the workspace');
-    // Control on a fresh profile and a fresh copy of the document: the refused run was killed while
-    // holding LibreOffice's lock file next to in.odt (".~lock.in.odt#"), and a second LibreOffice
-    // waits on that lock. The app never meets this: every conversion has a new workspace and copy.
-    fs.mkdirSync(ws.file('profile2'));
-    const odt2 = makeRichOdt(ws.file('control.odt'));
-    await run('soffice', ['--headless', '--norestore', '--nologo', `-env:UserInstallation=${pathToFileURL(ws.file('profile2')).href}`, '--convert-to', 'pdf', '--outdir', ws.file('out'), odt2], ws, { write: [ws.file('profile2')], timeoutMs: 300000 });
-    assert.ok(fs.existsSync(ws.file('out/control.pdf')), 'control: the same conversion into the workspace works');
+    // Control in a separate, fresh workspace (as every app conversion has): reusing the workspace
+    // of the refused run, which was killed at its deadline, hung LibreOffice (runs 38688395176,
+    // 38719799779).
+    const wc = await scratch('canary-control');
+    try {
+      fs.mkdirSync(wc.file('profile'));
+      const odt2 = makeRichOdt(wc.file('control.odt'));
+      await run('soffice', ['--headless', '--norestore', '--nologo', `-env:UserInstallation=${pathToFileURL(wc.file('profile')).href}`, '--convert-to', 'pdf', '--outdir', wc.file('out'), odt2], wc, { write: [wc.file('profile')], timeoutMs: 120000 });
+      assert.ok(fs.existsSync(wc.file('out/control.pdf')), 'control: the same conversion into a workspace works');
+    } finally { await wc.cleanup(); }
     const epub = require('../electron/helpers.cjs').makeRichEpub(ws.file('in.epub'));
     await run('calibre', [epub, path.join(outside, 'book.txt')], ws, { timeoutMs: 300000 }).catch(() => {});
     assert.deepEqual(fs.readdirSync(outside).sort(), ['canary.png'], 'Calibre wrote nothing outside the workspace');
     await run('calibre', [epub, ws.file('book.txt')], ws, { timeoutMs: 300000 });
     assert.ok(fs.statSync(ws.file('book.txt')).size > 0, 'control: Calibre converts into the workspace');
-  } finally { await ws.cleanup(); }
+  } finally {
+    // Contain a hang: no helper of this test may outlive it and disturb the process counts below.
+    for (const pid of helpersOf(process.pid)) { try { execFileSync('taskkill', ['/pid', String(pid), '/T', '/F']); } catch { /* gone */ } }
+    await ws.cleanup();
+  }
 });
 
 test('a confined engine cannot read a file outside its workspace (the original), only the copy inside', opts, async () => {
@@ -135,6 +144,7 @@ test('a confined engine has no network: loopback and internet both fail, while t
 });
 
 test('the job owns LibreOffice\'s descendants: killing only the helper ends soffice.com and soffice.bin', opts, async () => {
+  startClean('libreoffice');
   const ws = await scratch('own-lo');
   const big = makeBigOdt(ws.file('big.odt'));
   fs.mkdirSync(ws.file('profile'));
@@ -153,6 +163,7 @@ test('the job owns LibreOffice\'s descendants: killing only the helper ends soff
 });
 
 test('Morph dying mid-conversion takes the engines with it; recovery leaves no staging; the next conversion works', opts, async () => {
+  startClean('libreoffice');
   const root = S.dirOf('parent');
   const big = makeBigOdt(path.join(root, 'big.odt'));
   const child = spawn(process.execPath, [path.join(__dirname, 'confined-child.cjs'), root, big, 'pdf'], { stdio: ['ignore', 'pipe', 'inherit'] });
@@ -175,6 +186,7 @@ test('Morph dying mid-conversion takes the engines with it; recovery leaves no s
 });
 
 test('a memory limit stops the engine: job failed with limit-memory, nothing left, the next conversion works', opts, async () => {
+  startClean('libreoffice');
   const L = createStack('win-confine-limit');
   try {
     await L.tools.probe(); // normal limits for the probes
@@ -195,6 +207,7 @@ test('a memory limit stops the engine: job failed with limit-memory, nothing lef
 });
 
 test('Calibre\'s descendants belong to the job too', opts, async () => {
+  startClean('calibre');
   const ws = await scratch('own-calibre');
   const { makeZip: mz } = require('../electron/helpers.cjs');
   const para = (i) => `<p>Paragraph ${i}: שורה בעברית and enough English words to fill a line.</p>`;

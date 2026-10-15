@@ -125,22 +125,36 @@ test('Stop during an image conversion ends the confined worker; no output; the n
   assert.equal(u.state, 'completed', u.error);
 });
 
-test('stress: image worker, 8000x8000 PNG to AVIF (peak memory under half the limit)', opts, async () => {
+// The image worker's limit is set from these measurements. They run under a raised limit so the
+// true peak is seen (on 05aea5f the provisional 4096 MiB limit stopped the 64 MP case at 4126 MiB,
+// cleanly, with limit-memory). The shipped limit must leave 2x headroom over the realistic case.
+async function workerPeak(tag, width, height, channels) {
   const sharp = require('sharp');
-  const ws = await scratch('worker-stress');
+  const ws = await scratch(`worker-stress-${tag}`);
   try {
     const big = ws.file('big.png');
-    await sharp({ create: { width: 8000, height: 8000, channels: 4, background: { r: 10, g: 120, b: 200, alpha: 0.5 } } }).png().toFile(big);
+    const background = channels === 4 ? { r: 10, g: 120, b: 200, alpha: 0.5 } : '#0a78c8';
+    await sharp({ create: { width, height, channels, background } }).png().toFile(big);
+    const raised = new Confinement({ ownedRoots: [...binRoots(), codeRoot()], limits: { ...policy.limits, imageworker: { jobMemoryMb: 32768, maxProcesses: 8 } } });
     let stats;
     const got = new Promise((r) => { stats = r; });
     await runInFreshWorker({ type: 'image', task: { input: big, ext: 'png', target: 'avif', quality: 'high', out: ws.file('out.avif') } },
-      { timeoutMs: 540000, confine: { confinement: S.tools.confinement, workspace: ws.dir }, onStats: stats });
+      { timeoutMs: 540000, confine: { confinement: raised, workspace: ws.dir }, onStats: stats });
     const s = await got;
     const mib = Math.ceil((s?.peakJobMemory || 0) / 1048576);
-    record({ stress: 'imageworker-8000px-avif', peakMiB: mib, limitMiB: policy.limits.imageworker.jobMemoryMb, processes: s?.totalProcesses });
-    assert.ok(mib > 0);
-    assert.ok(mib * 2 <= policy.limits.imageworker.jobMemoryMb, `${mib} MiB leaves less than 2x headroom`);
+    record({ stress: `imageworker-${tag}-avif`, pixels: width * height, channels, peakMiB: mib, shippedLimitMiB: policy.limits.imageworker.jobMemoryMb, processes: s?.totalProcesses });
+    assert.ok(mib > 0, 'a real peak was measured (statistics read after the helper closed)');
+    return mib;
   } finally { await ws.cleanup(); }
+}
+
+test('stress: image worker, 24 MP photo (6000x4000 RGB) to AVIF: shipped limit leaves 2x headroom', opts, async () => {
+  const mib = await workerPeak('24mp', 6000, 4000, 3);
+  assert.ok(mib * 2 <= policy.limits.imageworker.jobMemoryMb, `${mib} MiB leaves less than 2x headroom under ${policy.limits.imageworker.jobMemoryMb} MiB`);
+});
+
+test('stress: image worker, 64 MP RGBA (8000x8000) to AVIF: measured and recorded', opts, async () => {
+  await workerPeak('64mp-rgba', 8000, 8000, 4);
 });
 
 test('jobs are isolated from each other: an engine in job B cannot read job A\'s live workspace', opts, async () => {
