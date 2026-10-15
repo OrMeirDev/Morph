@@ -23,18 +23,23 @@ const outFile = (() => { const i = process.argv.indexOf('--out'); return i > 0 ?
 if (process.platform !== 'win32' || !fs.existsSync(HELPER)) { console.log('needs Windows and native/out/morph-confine.exe'); process.exit(0); }
 
 const results = [];
-function run(name, { tools = policy.tools, tool, exe, args, env = {}, read = [], shipped = true, input = null, expect = null }) {
+const BASH = 'C:\\Program Files\\Git\\bin\\bash.exe';
+function run(name, { tools = policy.tools, tool, exe, args, env = {}, read = [], shipped = true, input = null, expect = null, flags = [], viaBash = false, timeoutMs = 120000 }) {
   const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'morph-diag-'));
   const c = new Confinement({ ownedRoots: [...binRoots(), codeRoot()], tools });
   const launch = c.prepare(tool, exe, args, { workspace: ws, read });
+  if (flags.length) launch.args.splice(launch.args.indexOf('--'), 0, ...flags);
   const t0 = Date.now();
-  const r = spawnSync(launch.exe, launch.args, { cwd: launch.cwd, env: { ...launch.env, ...env }, encoding: 'utf8', timeout: 120000, windowsHide: true, stdio: [input ? 'pipe' : 'ignore', 'pipe', 'pipe'], input: input || undefined });
+  // viaBash: the same call started through Git Bash (whose runtime gives descendants a console of
+  // its own), to compare with the direct start from this (PowerShell) step.
+  const [file, argv] = viaBash ? [BASH, ['-c', '"$0" "$@"', launch.exe, ...launch.args]] : [launch.exe, launch.args];
+  const r = spawnSync(file, argv, { cwd: launch.cwd, env: { ...launch.env, ...env, ...(viaBash ? { MSYS_NO_PATHCONV: '1', MSYS2_ARG_CONV_EXCL: '*' } : {}) }, encoding: 'utf8', timeout: timeoutMs, windowsHide: true, stdio: [input ? 'pipe' : 'ignore', 'pipe', 'pipe'], input: input || undefined });
   const s = launch.readStats();
   const container = launch.args[launch.args.indexOf('--appcontainer') + 1];
   if (launch.args.includes('--appcontainer') && !s?.profileDeleted) spawnSync(HELPER, ['--delete-profile', container], { stdio: 'ignore' });
   const ok = r.status === 0 && s?.outcome === 'exited' && (!expect || expect.test(r.stdout || ''));
   const res = { name, shipped, ok, status: r.status, ms: Date.now() - t0, timedOut: !!r.error, stats: s, stdout: (r.stdout || '').trim().slice(-300), stderr: (r.stderr || '').trim().slice(-600) };
-  console.log(`${ok ? 'OK  ' : 'FAIL'}${shipped ? '' : ' (not shipped)'} ${name}: status=${r.status} outcome=${s?.outcome} ${s?.error ? `error=${s.error} ` : ''}${!ok && res.stderr ? `stderr=${res.stderr.replace(/\s+/g, ' ').slice(0, 300)}` : ''}`);
+  console.log(`${ok ? 'OK  ' : 'FAIL'}${shipped ? '' : ' (not shipped)'} ${name}: status=${r.status} outcome=${s?.outcome} ${s?.privateDesktop ? 'privateDesktop ' : ''}${s?.totalProcesses != null ? `processes=${s.totalProcesses} ` : ''}${s?.error ? `error=${s.error} ` : ''}${!ok && res.stderr ? `stderr=${res.stderr.replace(/\s+/g, ' ').slice(0, 300)}` : ''}`);
   // A timed-out engine may still be dying (kill-on-close): retry, and never let cleanup end the run.
   try { fs.rmSync(ws, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 }); } catch { /* left in TEMP */ }
   results.push(res);
@@ -56,6 +61,23 @@ for (const [name, c] of cases) {
     const flip = { ...policy.tools, [c.tool]: { ...t, restrictWrites: !t.restrictWrites } };
     run(`${name} (low-integrity${flip[c.tool].restrictWrites ? ', write-restricted' : ''})`, { ...c, tools: flip, shipped: false });
   }
+}
+// Low-integrity launch matrix (information): which start context and console setting lets the Low
+// tier initialise, with a system program as control. Measured to choose the shipped setting.
+const SYS = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32');
+const lowCases = [
+  ['cmd /c ver', { tool: 'soffice', exe: path.join(SYS, 'cmd.exe'), args: ['/c', 'ver'] }],
+  ['soffice --version', engine('soffice', 'libreoffice/program/soffice.com', ['--headless', '--version'])],
+  ['ebook-convert --version', engine('calibre', 'calibre/ebook-convert.exe', ['--version'])],
+];
+for (const [name, c] of lowCases) {
+  if (!fs.existsSync(c.exe)) continue;
+  for (const consoleMode of ['new', 'detached', 'inherit']) {
+    for (const keep of [false, true]) {
+      run(`matrix: ${name} (low-integrity, console ${consoleMode}${keep ? ', Administrators kept' : ''})`, { ...c, shipped: false, timeoutMs: 45000, flags: ['--console', consoleMode, ...(keep ? ['--diag-keep-admins'] : [])] });
+    }
+  }
+  if (fs.existsSync(BASH)) run(`matrix: ${name} (low-integrity, console new, started through Git Bash)`, { ...c, shipped: false, timeoutMs: 45000, viaBash: true });
 }
 const rt = workerRuntime();
 if (rt) {

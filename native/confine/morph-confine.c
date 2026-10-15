@@ -22,6 +22,10 @@
 //                          writes to anything not labelled Low (all normal user files); reads and
 //                          the network are NOT restricted in this mode. The engine runs on a
 //                          window station and desktop of its own (see privateDesktop)
+//   --console new|detached|inherit  the engine's console: a new hidden one (default), none, or this
+//                          process's
+//   --diag-keep-admins     diagnostics only (scripts/confine-diagnose.cjs): with --low-integrity,
+//                          leave the Administrators group enabled; never used by Morph
 //   --read <path>          AppContainer: grant read + execute on <path> (inherited by children)
 //   --write <path>         AppContainer: grant modify on <path>; low integrity: label <path> Low
 //                          so the engine may write there (both inherited by children)
@@ -65,6 +69,8 @@ typedef struct {
   const wchar_t *capability;
   const wchar_t *restrictWrites;
   int lowIntegrity;
+  const wchar_t *console; // new (default) | detached | inherit
+  int diagKeepAdmins;     // diagnostics only: do not make Administrators deny-only
   const wchar_t *read[MAX_GRANTS];
   int nRead;
   const wchar_t *write[MAX_GRANTS];
@@ -148,11 +154,13 @@ static int parseArgs(int argc, wchar_t **argv, Options *o) {
     const wchar_t *v = i + 1 < argc ? argv[i + 1] : NULL;
     if (!wcscmp(a, L"--")) { o->argStart = i + 1; return o->argStart < argc && !(o->appContainer && o->lowIntegrity); }
     if (!wcscmp(a, L"--low-integrity")) { o->lowIntegrity = 1; continue; }
+    if (!wcscmp(a, L"--diag-keep-admins")) { o->diagKeepAdmins = 1; continue; }
     if (!wcscmp(a, L"--ephemeral")) { o->ephemeral = 1; continue; }
     if (!v) return 0;
     if (!wcscmp(a, L"--appcontainer")) o->appContainer = v;
     else if (!wcscmp(a, L"--capability")) o->capability = v;
     else if (!wcscmp(a, L"--restrict-writes")) o->restrictWrites = v;
+    else if (!wcscmp(a, L"--console")) { if (wcscmp(v, L"new") && wcscmp(v, L"detached") && wcscmp(v, L"inherit")) return 0; o->console = v; }
     else if (!wcscmp(a, L"--read")) { if (o->nRead == MAX_GRANTS) return 0; o->read[o->nRead++] = v; }
     else if (!wcscmp(a, L"--write")) { if (o->nWrite == MAX_GRANTS) return 0; o->write[o->nWrite++] = v; }
     else if (!wcscmp(a, L"--job-memory")) o->jobMemory = _wcstoui64(v, NULL, 10) * 1024 * 1024;
@@ -261,7 +269,7 @@ done:
 
 // A restricted, Low-integrity copy of this process's token for engines that cannot run in an
 // AppContainer. NULL on failure (error recorded).
-static HANDLE lowToken(PSID restrictTo) {
+static HANDLE lowToken(PSID restrictTo, int keepAdmins) {
   HANDLE self = NULL, restricted = NULL;
   if (!OpenProcessToken(GetCurrentProcess(), TOKEN_DUPLICATE | TOKEN_QUERY | TOKEN_ASSIGN_PRIMARY | TOKEN_ADJUST_DEFAULT, &self)) {
     setError("OpenProcessToken", GetLastError());
@@ -279,7 +287,7 @@ static HANDLE lowToken(PSID restrictTo) {
   CreateWellKnownSid(WinRestrictedCodeSid, NULL, restrictedSid, &n3);
   SID_AND_ATTRIBUTES restricting[2] = { { restrictTo, 0 }, { (PSID)restrictedSid, 0 } };
   DWORD flags = DISABLE_MAX_PRIVILEGE | (restrictTo ? WRITE_RESTRICTED : 0);
-  if (!CreateRestrictedToken(self, flags, 1, &denyOnly, 0, NULL, restrictTo ? 2 : 0, restrictTo ? restricting : NULL, &restricted)) {
+  if (!CreateRestrictedToken(self, flags, keepAdmins ? 0 : 1, keepAdmins ? NULL : &denyOnly, 0, NULL, restrictTo ? 2 : 0, restrictTo ? restricting : NULL, &restricted)) {
     setError("CreateRestrictedToken", GetLastError());
     CloseHandle(self);
     return NULL;
@@ -573,7 +581,7 @@ int wmain(int argc, wchar_t **argv) {
       }
     }
     R.grantMs = (DWORD)(GetTickCount64() - t0);
-    token = lowToken(writeSid);
+    token = lowToken(writeSid, o.diagKeepAdmins);
     R.writeRestricted = writeSid != NULL;
     if (!token) return (int)finish(&o, job, MC_EXIT_SETUP);
     R.lowIntegrity = 1;
@@ -619,7 +627,8 @@ int wmain(int argc, wchar_t **argv) {
   if (len + 1 >= cap) { snprintf(R.error, sizeof R.error, "command line too long"); return (int)finish(&o, job, MC_EXIT_SETUP); }
 
   PROCESS_INFORMATION pi = { 0 };
-  DWORD flags = EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT | CREATE_NO_WINDOW;
+  DWORD console = !o.console || !wcscmp(o.console, L"new") ? CREATE_NO_WINDOW : !wcscmp(o.console, L"detached") ? DETACHED_PROCESS : 0;
+  DWORD flags = EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT | console;
   BOOL started = token
     ? CreateProcessAsUserW(token, argv[o.argStart], cmd, NULL, NULL, nInherit > 0, flags, NULL, o.cwd, &si.StartupInfo, &pi)
     : CreateProcessW(argv[o.argStart], cmd, NULL, NULL, nInherit > 0, flags, NULL, o.cwd, &si.StartupInfo, &pi);
