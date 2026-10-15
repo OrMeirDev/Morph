@@ -20,7 +20,8 @@ function run(name, helperArgs, exe, args, env = {}) {
   const stats = path.join(os.tmpdir(), `morph-diag-${Date.now()}-${Math.random().toString(36).slice(2)}.json`);
   const t0 = Date.now();
   const r = spawnSync(HELPER, [...helperArgs(ws), '--write', ws, '--parent', String(process.pid), '--stats', stats, '--cwd', ws, '--', exe, ...args],
-    { encoding: 'utf8', timeout: 120000, env: { ...process.env, TEMP: path.join(ws, 'tmp'), TMP: path.join(ws, 'tmp'), ...env } });
+    // Launched the way ProcessRunner launches engines (hidden, no stdin).
+    { encoding: 'utf8', timeout: 120000, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, TEMP: path.join(ws, 'tmp'), TMP: path.join(ws, 'tmp'), ...env } });
   let s = null;
   try { s = JSON.parse(fs.readFileSync(stats, 'utf8')); } catch { /* none */ }
   const res = { name, status: r.status, ms: Date.now() - t0, timedOut: !!r.error && /ETIMEDOUT/.test(String(r.error)), stats: s,
@@ -42,11 +43,11 @@ const cmd = 'C:\\Windows\\System32\\cmd.exe';
 const id = `diag${Date.now().toString(36)}`;
 const cases = [
   ['job only, cmd /c ver', () => [], cmd, ['/d', '/c', 'ver']],
-  ['AppContainer (shared profile Morph.Engines-style name, profile not created), cmd /c ver', () => ['--appcontainer', `Morph.Diag.${id}`], cmd, ['/d', '/c', 'ver']],
-  ['AppContainer + capability, cmd /c ver', () => ['--appcontainer', `Morph.Diag.${id}b`, '--capability', 'morph.engines.read'], cmd, ['/d', '/c', 'ver']],
+  ['AppContainer, profile created and deleted (--ephemeral), cmd /c ver', () => ['--appcontainer', `Morph.Diag.${id}`, '--ephemeral'], cmd, ['/d', '/c', 'ver']],
+  ['AppContainer + capability, cmd /c ver', () => ['--appcontainer', `Morph.Diag.${id}b`, '--ephemeral', '--capability', 'morph.engines.read'], cmd, ['/d', '/c', 'ver']],
   ...(fs.existsSync(ffmpeg) ? [
-    ['AppContainer, ffmpeg -version, read granted to the container', () => ['--appcontainer', `Morph.Diag.${id}c`, '--read', path.dirname(ffmpeg)], ffmpeg, ['-hide_banner', '-version']],
-    ['AppContainer + capability, ffmpeg -version, read granted to the capability', () => ['--appcontainer', `Morph.Diag.${id}d`, '--capability', 'morph.engines.read', '--read', path.dirname(ffmpeg)], ffmpeg, ['-hide_banner', '-version']],
+    ['AppContainer, ffmpeg -version, read granted to the container', () => ['--appcontainer', `Morph.Diag.${id}c`, '--ephemeral', '--read', path.dirname(ffmpeg)], ffmpeg, ['-hide_banner', '-version']],
+    ['AppContainer + capability, ffmpeg -version, read granted to the capability', () => ['--appcontainer', `Morph.Diag.${id}d`, '--ephemeral', '--capability', 'morph.engines.read', '--read', path.dirname(ffmpeg)], ffmpeg, ['-hide_banner', '-version']],
   ] : []),
   ...(fs.existsSync(soffice) ? [
     ['Low integrity, soffice --version', () => ['--low-integrity'], soffice, ['--headless', '--version']],
@@ -59,8 +60,11 @@ const cases = [
 ];
 const electron = electronExe();
 if (electron) {
-  cases.push(['AppContainer + capability, Electron as node: console.log', () => ['--appcontainer', `Morph.Diag.${id}g`, '--capability', 'morph.engines.read', '--read', ROOT],
+  cases.push(['AppContainer + capability, Electron as node: console.log', () => ['--appcontainer', `Morph.Diag.${id}g`, '--ephemeral', '--capability', 'morph.engines.read', '--read', ROOT],
     electron, ['-e', 'console.log("node " + process.version)'], { ELECTRON_RUN_AS_NODE: '1' }]);
 }
 for (const [name, h, exe, args, env] of cases) results.push(run(name, h, exe, args, env));
+const left = spawnSync(HELPER, ['--list-profiles', 'Morph.Diag.'], { encoding: 'utf8' }).stdout.trim();
+console.log(`profiles left by the runs above: ${left ? left.split(/\r?\n/).length : 0}`);
+results.push({ name: 'profiles left', left });
 if (outFile) fs.writeFileSync(outFile, JSON.stringify(results, null, 2));

@@ -485,8 +485,16 @@ int wmain(int argc, wchar_t **argv) {
   if (o.lowIntegrity) {
     ULONGLONG t0 = GetTickCount64();
     if (o.restrictWrites) {
-      HRESULT hr = containerSid(o.restrictWrites, &writeSid);
-      if (FAILED(hr)) { setError("DeriveAppContainerSidFromAppContainerName(restrict)", (DWORD)hr); return (int)finish(&o, job, MC_EXIT_SETUP); }
+      // A per-job SID under the Resource Manager authority (S-1-9-...), from a hash of the name.
+      // (An AppContainer-type SID is refused as a restricting SID: CreateRestrictedToken error 87,
+      // measured in run 38710200535.)
+      DWORD h[4] = { 2166136261u, 16777619u, 0x9e3779b9u, 0x85ebca6bu };
+      for (const wchar_t *c = o.restrictWrites; *c; c++) for (int k = 0; k < 4; k++) h[k] = (h[k] ^ (DWORD)*c) * (16777619u + 2u * (DWORD)k);
+      SID_IDENTIFIER_AUTHORITY rm = SECURITY_RESOURCE_MANAGER_AUTHORITY;
+      if (!AllocateAndInitializeSid(&rm, 5, 0x4D6F7270u /* "Morp" */, h[0], h[1], h[2], h[3], 0, 0, 0, &writeSid)) {
+        setError("AllocateAndInitializeSid(restrict)", GetLastError());
+        return (int)finish(&o, job, MC_EXIT_SETUP);
+      }
       wchar_t *s = NULL;
       if (ConvertSidToStringSidW(writeSid, &s)) { toUtf8(s, R.sid, sizeof R.sid); LocalFree(s); }
     }
