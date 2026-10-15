@@ -15,7 +15,12 @@ function killTree(child) {
   if (!child || child.exitCode !== null || child.signalCode !== null) return;
   try {
     if (IS_WIN) {
-      spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' }).on('error', () => child.kill());
+      // taskkill first (it finds descendants through the parent link), then, if the root is still
+      // running when taskkill is done (or could not start), terminate it directly.
+      const stillRunning = () => child.exitCode === null && child.signalCode === null;
+      spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' })
+        .on('error', () => child.kill())
+        .on('exit', () => { if (stillRunning()) child.kill(); });
     } else {
       process.kill(-child.pid, 'SIGKILL');
     }

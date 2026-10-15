@@ -85,6 +85,28 @@ behaviour, a code-signing certificate or a published release stays Pending and i
 | 8 | Signed installer and app with the expected publisher | **Pending** (no certificate) | `signature.json`: both `NotSigned`; the step succeeds because it reports pending, which is not a pass. Missing inputs: `docs/RELEASING.md` §5 |
 | 9 | Document fidelity with the bundled Windows LibreOffice; real-world files | **Pass** for the generated fixtures / **Pending**: a real-world corpus (embedded fonts, images, tracked changes, scanned PDFs) | `documents.test` and `ebooks.test` ran against LibreOffice 26.2.6.3 and Calibre 9.15.0 in this job |
 
+### D2 checks (real restricted processes, Windows Server 2025)
+
+Measured in run 38753883753 (`afa275c`) by `test/windows/confinement.test.cjs`,
+`test/windows/isolation.test.cjs` and `scripts/confine-diagnose.cjs` (the diagnostics run from
+PowerShell, the context Morph itself starts from; the tests from Git Bash). Evidence:
+`confine-diagnose.json`, `confinement.log`, `isolation-measurements.json`.
+
+| Check | Result |
+| --- | --- |
+| Every engine and the image worker start confined with the shipped policy (AppContainer or Low integrity), from PowerShell | **Pass**: ffmpeg, Poppler, 7-Zip (AppContainer); LibreOffice `--version`, Calibre `--version` and a real Calibre EPUB → MOBI (Low integrity); Electron worker runtime and a real probe through the worker (sharp loads) |
+| Descendants owned; Stop and parent death end the whole tree | **Pass**: `soffice.com` + `soffice.bin`, `ebook-convert` + `calibre-parallel`, the image worker |
+| Memory and process limits from measured peaks | **Pass**: peaks ffmpeg 1654, LibreOffice 395, Poppler 242, 7-Zip 380, Calibre 1221, image worker 1142 (24 MP AVIF) / 4126 (64 MP RGBA AVIF) MiB; each under its limit with ≥ 2× headroom; a hit ends the job (`limit-memory`) |
+| AppContainer: canary outside the workspace, original, network | **Pass**: canary not overwritten; original EPERM to read and write; loopback ETIMEDOUT with 0 connections at the server; ffmpeg cannot reach 127.0.0.1 or the internet while the host can |
+| Jobs isolated from each other | **Pass**: pdfinfo and the image worker of job B refused job A's live workspace |
+| Detection confined | **Pass**: same answers as reading the file (Hebrew names, corpus files, animated GIF); the worker runs under `morph-confine.exe` and its command line names no file |
+| No AppContainer profile left behind | **Pass**: 0 after normal exit, kill and cancel |
+| Low integrity: writes into another Low folder (LocalLow) | **Open (measured gap)**: Calibre wrote into `LocalLow` |
+| Low integrity, write-restricted token | **Not shippable**: LibreOffice 0xC0000142, Calibre hangs |
+| Low integrity, read-restricted token | **Not shippable**: user-profile canary refused and `C:\Windows\win.ini` readable (as intended), but LibreOffice hangs and Calibre cannot create folders in its temp folder |
+| LibreOffice in an AppContainer | **Not shippable**: a conversion never returns (killed at 120 s) |
+| FAT32 / exFAT | **Open (measured gap)**: an AppContainer ffmpeg changed a canary on both |
+
 ### Engine payload pinning (CI evidence)
 
 | Check | Status | Evidence |

@@ -6,13 +6,19 @@
 // isolation:
 //   'appcontainer'   no network, reads only its own folder, writes only the job workspace
 //   'low-integrity'  writes only where Morph labelled Low; reads and network NOT restricted
-// console (low-integrity only): 'inherit' = the engine shares the helper's hidden console. Measured
-//   in run 38733280447 (scripts/confine-diagnose.cjs matrix, started from PowerShell as Morph is
-//   from Explorer): with a new console of its own, the restricted Low token (Administrators
-//   deny-only) cannot start the console host, and LibreOffice, Calibre and even cmd.exe exit with
-//   0xC0000142 before running; with the helper's console all three start, Administrators still
-//   deny-only. Without a console LibreOffice fails the same way. (Under Git Bash, where the tests
-//   run, a new console works, which is why only the packaged app and the diagnostics showed it.)
+// Low-integrity engines start with a console of their own and a default DACL for the user and
+//   SYSTEM (native/confine/morph-confine.c). Without that DACL an elevated user's engines could not
+//   open their own objects: 0xC0000142 at start, Calibre's worker pipe refused (runs 38733280447,
+//   38734059687; fixed and measured with real conversions from PowerShell in run 38753883753).
+// restrictWrites / restrictReads (low-integrity, measured in run 38753883753 by
+//   scripts/confine-diagnose.cjs, real conversions, new and inherited console):
+//   - write-restricted (writes must also pass for the job's SID): LibreOffice exits with
+//     0xC0000142, Calibre hangs. Not shipped.
+//   - read-restricted (every access must also pass for the job's SID, a shared read SID, Users,
+//     Everyone or RESTRICTED): a file in the user profile is refused and C:\Windows readable, as
+//     intended, but LibreOffice hangs (killed at 120 s) and Calibre fails: Python's mkdtemp makes
+//     its temp folders 0o700, which on Windows means an owner-only ACL without the job's SID, so
+//     Calibre cannot create anything inside its own temp folder. Not shipped.
 // Every engine also runs in a Job Object (kill-on-close, parent watch, the limits below).
 const tools = {
   ffmpeg: { isolation: 'appcontainer' },
@@ -23,12 +29,11 @@ const tools = {
   pdfinfo: { isolation: 'appcontainer' },
   soffice: {
     isolation: 'low-integrity',
-    // Write restriction to the job's own SID is measured by isolation.test but not shipped: it did
-    // not start LibreOffice or Calibre (runs 38713426740, 38714316057, before console: 'inherit').
-    // Until it converts, Low-IL engines can write into other Low-labelled folders (e.g. LocalLow).
+    // Not shipped (measured, see above): Low-IL engines can read what the user can read, and
+    // write into other Low-labelled folders (e.g. LocalLow).
     restrictWrites: false,
-    console: 'inherit',
-    reason: 'LibreOffice 26.2.6.3 in an AppContainer: --version works, but the first start of a profile never returns (killed after 300 s, run 38680593398); it needs named pipes and objects an AppContainer does not give it.',
+    restrictReads: false,
+    reason: 'LibreOffice 26.2.6.3 in an AppContainer: --version works, but a conversion with a new profile never returns (killed after 300 s, run 38680593398; again after 120 s in run 38753883753).',
   },
   // The per-job image worker (sharp/libvips, heic-convert, pdf-lib, imagetracerjs) as Electron in
   // node mode: AppContainer, reads Morph's runtime and code, writes the job workspace.
@@ -36,7 +41,7 @@ const tools = {
   calibre: {
     isolation: 'low-integrity',
     restrictWrites: false, // as above
-    console: 'inherit',
+    restrictReads: false,
     reason: 'Calibre 9.15.0 in an AppContainer stops at once: "RuntimeError: NUL file missing in windows" (calibre/utils/ipc/launch.py checks os.devnull, which an AppContainer cannot open; run 38680593398).',
   },
 };

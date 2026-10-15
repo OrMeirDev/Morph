@@ -52,7 +52,7 @@ features/conversion ── commands ──▶ ipc/router (sender + schema check)
 | `domain/limits.cjs` | deadlines, log/capture bounds, archive and intake budgets |
 | `infra/ToolRegistry.cjs` | resolve and **probe** engines (versions, ffmpeg encoders, sharp/heic in the worker) |
 | `infra/ProcessRunner.cjs` | argv-only spawn, deadline, bounded tail, abort → process-tree kill |
-| `infra/WorkerHost.cjs` | `utilityProcess` (app) / `fork` (tests); persistent detection worker, fresh worker per image job |
+| `infra/WorkerHost.cjs` | confined workers through the helper (fresh one per image job; one `ConfinedDetector` fed byte ranges); `utilityProcess` / `fork` where confinement does not apply |
 | `infra/JobWorkspace.cjs` | private `<tmp>/morph-jobs/<jobId>`; swept at startup |
 | `infra/OutputPublisher.cjs` | same-disk staging `.~morph-<jobId>.<ext>`, exclusive reservation, rename; never overwrites |
 | `infra/artifactValidator.cjs` | non-empty + format signature, per file and per page folder |
@@ -85,13 +85,15 @@ features/conversion ── commands ──▶ ipc/router (sender + schema check)
 
 ## Process isolation, honestly (D2 — Partial)
 
-D2 covers all native processing of untrusted files. Status: **Partial**. Engines and the image
-worker run confined; detection is not OS-confined, and LibreOffice/Calibre have only write
-protection. Each guarantee below is stated with its conditions; none of it is called a sandbox
-without them. Measurements: Windows Server 2025 (GitHub `windows-latest`), runs 38719799779 and
-38722315865; tests `test/windows/confinement.test.cjs` and `test/windows/isolation.test.cjs`.
+D2 covers all processing of untrusted files. Status: **Partial**. Engines, the image worker and
+file detection run confined; LibreOffice and Calibre have only write protection (reads and
+network open), and FAT32/exFAT volumes are not protected by any tier. Each guarantee below is
+stated with its conditions; none of it is called a sandbox without them. Measurements: Windows
+Server 2025 (GitHub `windows-latest`), runs 38719799779, 38722315865 and 38753883753; tests
+`test/windows/confinement.test.cjs`, `test/windows/isolation.test.cjs`, and
+`scripts/confine-diagnose.cjs` (run from PowerShell in CI).
 
-### 1. Lifetime and resources (Job Object) — every engine and the image worker
+### 1. Lifetime and resources (Job Object) — every engine, the image worker, detection
 
 Every call (`ToolRegistry.run` / the image worker → `infra/Confinement.cjs` →
 `native/out/morph-confine.exe`) runs in its own Job Object, held only by the helper:
@@ -111,8 +113,8 @@ Every call (`ToolRegistry.run` / the image worker → `infra/Confinement.cjs` �
 
 | Tier | Runs | Files | Network |
 | --- | --- | --- | --- |
-| AppContainer, no capabilities, one identity **per job** | ffmpeg, ffprobe, 7-Zip, Poppler, the image worker (sharp/libvips, heic-convert, pdf-lib, imagetracerjs as Electron in node mode) | read: Morph's own folders through one capability (`morph.engines.read`: `bin\`, Morph's code and runtime); write: only that job's workspace (granted to the job's own AppContainer SID). Enforced through NTFS ACLs, so **not on FAT32/exFAT** | none; loopback included |
-| Low integrity (restricted token: privileges dropped, Administrators deny-only; a private window station and desktop; the helper's hidden console) | LibreOffice, Calibre | write: refused to anything labelled Medium (normal user files) — allowed in the job workspace and the LibreOffice profile (labelled Low) **and in any other Low-labelled folder** (measured: Calibre wrote into `%USERPROFILE%\AppData\LocalLow`); read: **anything the user can read** | **not restricted** |
+| AppContainer, no capabilities, one identity **per job** | ffmpeg, ffprobe, 7-Zip, Poppler, the image worker (sharp/libvips, heic-convert, pdf-lib, imagetracerjs as Electron in node mode), the detection worker (file-type, GIF reader; same runtime, an empty workspace of its own, never given the original: see below) | read: Morph's own folders through one capability (`morph.engines.read`: `bin\`, Morph's code and runtime); write: only that job's workspace (granted to the job's own AppContainer SID). Enforced through NTFS ACLs, so **not on FAT32/exFAT** | none; loopback included |
+| Low integrity (restricted token: privileges dropped, Administrators deny-only, default DACL for the user and SYSTEM; a private window station and desktop) | LibreOffice, Calibre | write: refused to anything labelled Medium (normal user files) — allowed in the job workspace and the LibreOffice profile (labelled Low) **and in any other Low-labelled folder** (measured: Calibre wrote into `%USERPROFILE%\AppData\LocalLow`); read: **anything the user can read** | **not restricted** |
 
 Measured for the AppContainer tier: a canary outside the workspace is not overwritten; reading an
 original outside the workspace fails; code in the image worker's container gets EPERM reading or
@@ -121,6 +123,13 @@ its loopback connection times out with no connection reaching the server; ffmpeg
 127.0.0.1 or the internet while the host can (controls). Between jobs: an engine (pdfinfo) and the
 image worker of job B cannot read job A's live workspace. On FAT32/exFAT an AppContainer engine
 can write (ffmpeg changed a canary there): those volumes keep no permissions.
+
+Detection: when confinement is enforced the detection worker is never given the path. Morph opens
+the file, sends extension, size and time, and serves the byte ranges the detector asks for (at
+most 1 MiB per read, 64 MiB per file, never outside the file); the answers are the same as
+reading the file (tests compare both, real-world corpus included). When confinement is
+unavailable detection is refused like the engines; the unconfined utility-process worker remains
+only where confinement does not apply (not Windows, or `MORPH_CONFINEMENT=off`).
 
 How engines are fed: they never get the original or the output folder. `ctx.input()` copies the
 input into the job workspace; engines write there; the coordinator publishes (staging →
@@ -133,19 +142,28 @@ process in an unregistered one: error 2, measured) and deletes it on exit; if th
 Morph deletes it after the process closed; at start-up Morph sweeps profiles a crash left. Measured:
 no job profile is left after the test runs. Grants and labels are added only to folders Morph owns.
 
-Why LibreOffice and Calibre are not in the AppContainer (measured): LibreOffice's first profile
-start never returns there; Calibre (and Electron without `--no-stdio-init`) aborts because the
-NUL device cannot be opened. A write-restricted token per job (so they could not write into other
-Low folders) was measured too: neither starts with it, so it is not shipped.
+Why LibreOffice and Calibre are not in the AppContainer (measured): a LibreOffice conversion with
+a new profile never returns there (runs 38680593398, 38753883753); Calibre (and Electron without
+`--no-stdio-init`) aborts because the NUL device cannot be opened. Tighter Low-integrity tokens
+were measured with real conversions (run 38753883753) and are not shipped:
 
-Starting the Low tier (measured, run 38733280447): with a console of its own, the restricted
-token cannot start the console host, and LibreOffice, Calibre and even `cmd.exe` exit with
-0xC0000142 before running any code; sharing the helper's hidden console fixes it with
-Administrators still deny-only. Under Git Bash (where the test steps run) a new console works, so
-only the packaged app and the diagnostics, both started from PowerShell, showed it; the
-diagnostics now cover that context and fail the build if the Low tier does not start there. The
-private window station and desktop keep the engines away from the user's windows; they were not
-the cause.
+- write-restricted (writes must also pass for the job's SID, so no writes into other Low
+  folders): LibreOffice exits with 0xC0000142, Calibre hangs;
+- read-restricted (every access must also pass for the job's SID, a shared read SID, Users,
+  Everyone or RESTRICTED): reads work as intended (a file in the user profile refused,
+  `C:\Windows` readable), but LibreOffice hangs and Calibre fails: Python's `mkdtemp` creates
+  0o700 folders, which on Windows get an owner-only ACL without the job's SID, so Calibre cannot
+  create anything inside its own temp folder.
+
+Starting the Low tier: the restricted token used to copy the caller's default DACL, which for an
+elevated administrator grants only Administrators (deny-only in the token) and SYSTEM, so an
+engine could not open objects it had created itself: a new console could not start (0xC0000142)
+and Calibre's worker could not connect to its pipe (WinError 5). The token now carries a default
+DACL for the user and SYSTEM. The test steps run under Git Bash, whose runtime adds the user to
+the default DACL, so only the packaged app and the diagnostics (both started from PowerShell)
+showed it; the diagnostics now run real LibreOffice and Calibre conversions from PowerShell and
+fail the build if they do not convert. The private window station and desktop keep the engines
+away from the user's windows.
 
 Modes, shown on the settings page and in `tools:status`: `enforced`; `unavailable` (helper missing
 → engines refused, never run unconfined); `disabled` (`MORPH_CONFINEMENT=off`, diagnostics);
@@ -153,9 +171,10 @@ Modes, shown on the settings page and in `tools:status`: `enforced`; `unavailabl
 
 ### Not confined, or only partly (tracked in `docs/AUDIT-STATUS.md`)
 
-- File detection (file-type and Morph's GIF reader, no native code) runs in an Electron utility
-  process: separate process with a deadline, not OS-confined. It reads the original file.
 - LibreOffice and Calibre: no read restriction, no network restriction, and writes into other
-  Low-labelled folders are possible.
-- FAT32/exFAT: no protection by ACLs for any tier.
+  Low-labelled folders are possible (measured; the tighter tokens above do not convert). Closing
+  the network for them needs a machine-level rule (Windows Firewall per executable, installed
+  with administrator rights): an owner decision, not something Morph changes on its own.
+- FAT32/exFAT: no protection by ACLs for any tier, and none is possible from user mode: a
+  confined engine can write to any mounted FAT32/exFAT volume, not only those of its job.
 - A refused write does not make LibreOffice exit; the deadline ends it.

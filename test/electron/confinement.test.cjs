@@ -19,7 +19,7 @@ test('every tool has a confinement policy with a known isolation', () => {
     const lim = policy.limits[name];
     assert.ok(lim && lim.jobMemoryMb >= 1024 && lim.maxProcesses >= 8, `${name}: memory and process limits set`);
     if (t.isolation !== 'appcontainer') assert.ok(t.reason, `${name}: a tool outside the AppContainer needs the measured reason`);
-    if (t.isolation === 'low-integrity') assert.equal(t.console, 'inherit', `${name}: Low-integrity engines share the helper's console (measured)`);
+    if (t.isolation === 'low-integrity') assert.ok(!t.restrictWrites && !t.restrictReads, `${name}: restriction variants stay off until a measured conversion works`);
   }
 });
 
@@ -117,7 +117,7 @@ test('enforced, low-integrity engines: Low token, Low labels on the workspace an
   const opts = p.args.slice(0, p.args.indexOf('--'));
   assert.ok(opts.includes('--low-integrity'));
   assert.ok(!opts.includes('--appcontainer'));
-  assert.deepEqual(argAfter(opts, '--console'), ['inherit'], 'shares the helper console (a new one cannot start for this token)');
+  assert.deepEqual(argAfter(opts, '--console'), [], 'a console of its own (the helper default)');
   assert.deepEqual(argAfter(opts, '--read'), []);
   assert.deepEqual(argAfter(opts, '--write'), [ws, path.join(root, 'profile')]);
   assert.deepEqual(argAfter(opts, '--job-memory'), [String(policy.limits.soffice.jobMemoryMb)]);

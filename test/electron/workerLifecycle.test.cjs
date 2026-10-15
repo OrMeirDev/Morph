@@ -116,8 +116,13 @@ test('cancellation leaves no worker, no staging and no published output', { ...n
     await S.coordinator.whenIdle();
     const { helper, engine } = pidsFrom(pids);
     assert.equal(S.lastUpdate(d.id).state, 'cancelled');
-    assert.equal(alive(helper), false, 'no helper left');
-    assert.equal(alive(engine), false, 'no worker left');
+    // On failure, say what holds the PID: the same program, or another one after PID reuse.
+    const who = (pid) => {
+      if (process.platform !== 'win32') return '';
+      try { return require('child_process').execFileSync('powershell.exe', ['-NoProfile', '-Command', `(Get-CimInstance Win32_Process -Filter "ProcessId=${pid}").CommandLine`], { encoding: 'utf8' }).trim(); } catch { return '?'; }
+    };
+    assert.equal(alive(helper), false, `no helper left (PID ${helper}: ${who(helper)})`);
+    assert.equal(alive(engine), false, `no worker left (PID ${engine}: ${who(engine)})`);
     assert.deepEqual(fs.readdirSync(dir), ['big.png'], 'no output, no staging');
     assert.deepEqual(fs.existsSync(path.join(S.root, 'ws')) ? fs.readdirSync(path.join(S.root, 'ws')) : [], [], 'workspace removed');
   } finally { S.stop(); }

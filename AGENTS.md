@@ -65,10 +65,10 @@ Changes to native engines, `bin/`, Electron, sharp or packaging also need the Wi
   chosen from a Windows measurement (`test/windows/confinement.test.cjs`), not assumed.
 - Say exactly what each tier protects, with its conditions. Job Object (every engine): process
   lifetime and resource limits, nothing about files or network. AppContainer (ffmpeg, ffprobe,
-  7-Zip, Poppler, the image worker): no network capability, file access only where Morph grants
+  7-Zip, Poppler, the image worker, the detection worker): no network capability, file access only where Morph grants
   it, enforced through ACLs, so not on FAT32/exFAT. Low integrity (LibreOffice, Calibre): writes
-  refused to normal (Medium) user files; reads and network open. The detection worker is a
-  separate process, not OS-confined. Never write "cannot access your files" or "sandboxed"
+  refused to normal (Medium) user files; reads and network open. The detection worker never gets
+  a path: Morph serves it byte ranges. Never write "cannot access your files" or "sandboxed"
   without these qualifiers, and never fall back to unconfined silently.
 
 ## Keep changes reviewable
