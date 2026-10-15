@@ -225,6 +225,33 @@ test('Morph dying during an image conversion takes the confined worker with it',
   assert.deepEqual(await until(() => (processesOf(runtime.exe).length === 0 ? [] : null), 15000, 200), [], 'no worker outlived Morph');
 });
 
+test('file detection runs in the confined worker: same answers, the worker under the helper, never the path', opts, async () => {
+  const { ConfinedDetector } = require('../../electron/infra/WorkerHost.cjs');
+  const { detectFile } = require('../../electron/infra/detection.cjs');
+  const { makeGif } = require('../electron/helpers.cjs');
+  const dir = S.dirOf('detect-src');
+  const files = [
+    path.join(dir, 'מסמך.docx'), path.join(dir, 'ספר.epub'), path.join(dir, 'טופס.pdf'),
+    makeGif(path.join(dir, 'הנפשה.gif'), { frames: 2 }),
+  ];
+  fs.copyFileSync(path.join(ROOT, 'test', 'corpus', 'benyehuda-5452-ani-maamin.docx'), files[0]);
+  fs.copyFileSync(path.join(ROOT, 'test', 'corpus', 'gutenberg-11-alice.epub'), files[1]);
+  fs.copyFileSync(path.join(ROOT, 'test', 'corpus', 'irs-form-w9-2024.pdf'), files[2]);
+  const d = new ConfinedDetector({ confinement: S.tools.confinement, workspaceRoot: path.join(S.root, 'ws') });
+  try {
+    const strip = ({ mtimeMs, ...r }) => r;
+    for (const f of files) assert.deepEqual(strip(await d.detect(f, { timeoutMs: 60000 })), strip(await detectFile(f)), path.basename(f));
+    // The worker: Electron in node mode running engineWorker, whose parent is morph-confine.exe
+    // (Job Object + AppContainer, as the image worker), and whose command line names no file.
+    const rows = ps("Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*engineWorker*' } | ForEach-Object { \"$($_.ProcessId)|$($_.ParentProcessId)|$($_.CommandLine)\" }").split(/\r?\n/).filter(Boolean);
+    const parents = rows.map((r) => r.split('|')[1]);
+    const parentNames = parents.map((p) => ps(`(Get-Process -Id ${p} -ErrorAction SilentlyContinue).Path`));
+    record({ confinedDetection: { workers: rows.length, parents: parentNames } });
+    assert.ok(parentNames.some((n) => /morph-confine\.exe$/i.test(n)), `a detection worker under the helper: ${parentNames.join(', ')}`);
+    assert.ok(!rows.some((r) => /מסמך|ספר|טופס|הנפשה|detect-src/.test(r)), 'no file name on the worker command line');
+  } finally { await d.stop(); }
+});
+
 test('no job AppContainer profile is left behind (helpers ended normally, killed, or cancelled above)', opts, () => {
   const out = execFileSync(HELPER, ['--list-profiles', 'Morph.Job.'], { encoding: 'utf8' }).trim();
   record({ leftoverJobProfiles: out ? out.split(/\r?\n/).length : 0 });

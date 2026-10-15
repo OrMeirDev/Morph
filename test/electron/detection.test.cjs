@@ -7,27 +7,27 @@ const { detectFile } = require('../../electron/infra/detection.cjs');
 const { classify } = require('../../electron/domain/formats.cjs');
 const { tmpDir, makeGif, makePng, makeZip } = require('./helpers.cjs');
 
-test('GIF frames are counted structurally', () => {
+test('GIF frames are counted structurally', async () => {
   const d = tmpDir('gif');
-  assert.equal(gifFrameCount(makeGif(path.join(d, 'one.gif'))), 1);
-  assert.equal(gifFrameCount(makeGif(path.join(d, 'two.gif'), { frames: 3 })), 2); // stops at 2
+  assert.equal(await gifFrameCount(makeGif(path.join(d, 'one.gif'))), 1);
+  assert.equal(await gifFrameCount(makeGif(path.join(d, 'two.gif'), { frames: 3 })), 2); // stops at 2
 });
 
 test('a single-frame GIF whose comment holds 0x21 0xF9 pairs is still single-frame', async () => {
   const d = tmpDir('gif');
   const f = makeGif(path.join(d, 'tricky.gif'), { comment: '\x21\xf9\x21\xf9\x21\xf9' });
-  assert.equal(gifFrameCount(f), 1);
+  assert.equal(await gifFrameCount(f), 1);
   const r = await detectFile(f);
   assert.equal(r.kind, 'image'); // the old byte scan called this animated
   const anim = await detectFile(makeGif(path.join(d, 'anim.gif'), { frames: 2 }));
   assert.equal(anim.kind, 'gif');
 });
 
-test('a truncated GIF is an error, not an endless read', () => {
+test('a truncated GIF is an error, not an endless read', async () => {
   const d = tmpDir('gif');
   const f = makeGif(path.join(d, 'cut.gif'), { frames: 2 });
   fs.truncateSync(f, 30);
-  assert.throws(() => gifFrameCount(f), /gif-truncated/);
+  await assert.rejects(gifFrameCount(f), /gif-truncated/);
 });
 
 test('content wins over the name, and the rename is reported', async () => {

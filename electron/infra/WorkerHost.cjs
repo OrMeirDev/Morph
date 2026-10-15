@@ -1,13 +1,15 @@
 // Starts engine workers and talks to them with request/response messages, deadlines and kill on
-// cancel. Two kinds:
-//   - the persistent detection worker: an Electron utilityProcess (fork under plain Node). Separate
-//     process, deadlines, killed on timeout; NOT OS-confined (Electron has no confinement option
-//     for a Node utility process).
+// cancel. Three kinds:
+//   - PersistentWorker: an Electron utilityProcess (fork under plain Node). Separate process,
+//     deadlines, killed on timeout; NOT OS-confined. Detection uses it only where confinement is
+//     not available on the platform (not Windows, or MORPH_CONFINEMENT=off).
 //   - the per-job image worker (sharp, libvips, heic, pdf-lib): when confinement is enforced it is
 //     launched through morph-confine.exe like an engine (Job Object + AppContainer: no network,
 //     reads only Morph's runtime and code, writes only the job workspace), running Electron in
 //     node mode (ELECTRON_RUN_AS_NODE) and speaking JSON lines over stdin/stdout. Otherwise it is
 //     a utilityProcess/fork like the detection worker.
+//   - ConfinedDetector: detection in a confined worker of the same kind, fed byte ranges by Morph
+//     (the worker never opens the original); used whenever confinement is enforced.
 const fs = require('fs');
 const path = require('path');
 const { fork, spawn } = require('child_process');
@@ -16,6 +18,7 @@ const { CancelledError, TimeoutError } = require('./errors.cjs');
 const { killTree } = require('./ProcessRunner.cjs');
 const { outcomeError } = require('./Confinement.cjs');
 const { createWorkspace } = require('./JobWorkspace.cjs');
+const { normalizedExt } = require('../domain/formats.cjs');
 
 const WORKER = path.join(__dirname, '..', 'workers', 'engineWorker.cjs');
 const FRAME = '\u001eMORPH:'; // as in workers/engineWorker.cjs
@@ -260,7 +263,107 @@ async function probeImageWorker({ confinement, fallback, workspaceRoot, timeoutM
   try { return await runInFreshWorker({ type: 'probe' }, { timeoutMs, confine: { confinement, workspace: ws.dir } }); } finally { await ws.cleanup(); }
 }
 
+// File detection in a confined worker (the image worker's AppContainer policy: no network, reads
+// only Morph's runtime and code, writes only its own empty workspace) that never opens the
+// original. The worker gets the extension and size, asks for byte ranges, and Morph reads them
+// from a handle it opened itself: at most maxReadBytes per read and budgetBytes per file, inside
+// the file. One worker serves all detections; a missed deadline kills it and the next request
+// starts a fresh one (as PersistentWorker).
+class ConfinedDetector {
+  constructor({ confinement, runtime = undefined, workspaceRoot = undefined, maxReadBytes = 1024 * 1024, budgetBytes = 64 * 1024 * 1024 }) {
+    Object.assign(this, { confinement, runtime, workspaceRoot, maxReadBytes, budgetBytes });
+    this.w = null;
+    this.starting = null;
+    this.pending = new Map(); // id -> { resolve, reject, timer, fh, size, served }
+  }
+
+  async ensure() {
+    if (this.w) return this.w;
+    if (this.starting) return this.starting;
+    this.starting = (async () => {
+      const runtime = this.runtime || workerRuntime();
+      if (!runtime) throw Object.assign(new Error('confinement-unavailable:detect:no worker runtime (Electron binary)'), { code: 'confinement-unavailable' });
+      const ws = await createWorkspace(`detect-${process.pid}-${Date.now().toString(36)}`, this.workspaceRoot ? { root: this.workspaceRoot } : undefined);
+      const w = spawnConfinedWorker({ confinement: this.confinement, workspace: ws.dir, runtime });
+      w.onMessage((m) => this.onMessage(w, m));
+      w.closed.then((exit) => {
+        if (this.w === w) this.w = null;
+        for (const [id, p] of this.pending) {
+          if (p.w !== w) continue;
+          this.finish(id, null, new Error(`worker-exited:${exit.code}${exit.stderr ? `:${exit.stderr}` : ''}`));
+        }
+        ws.cleanup();
+      });
+      this.w = w;
+      return w;
+    })();
+    try { return await this.starting; } finally { this.starting = null; }
+  }
+
+  onMessage(w, m) {
+    const p = this.pending.get(m?.id);
+    if (!p || p.w !== w) return;
+    if (m.read) { this.serveRead(w, p, m.read); return; }
+    this.finish(m.id, m.ok ? m.result : null, m.ok ? null : new Error(m.error));
+  }
+
+  async serveRead(w, p, { req, position, length }) {
+    const reply = (r) => w.post({ type: 'read-result', req, ...r });
+    if (!Number.isSafeInteger(position) || !Number.isSafeInteger(length) || position < 0 || length < 0) return reply({ error: 'bad-read' });
+    if (length > this.maxReadBytes) return reply({ error: 'read-too-large' });
+    const n = Math.max(0, Math.min(length, p.size - position));
+    if (p.served + n > this.budgetBytes) return reply({ error: 'read-budget' });
+    p.served += n;
+    try {
+      const buf = Buffer.alloc(n);
+      const { bytesRead } = n ? await p.fh.read(buf, 0, n, position) : { bytesRead: 0 };
+      reply({ data: buf.subarray(0, bytesRead).toString('base64') });
+    } catch (e) {
+      reply({ error: `read-failed:${e.code || e.message}` });
+    }
+  }
+
+  finish(id, result, err) {
+    const p = this.pending.get(id);
+    if (!p) return;
+    this.pending.delete(id);
+    clearTimeout(p.timer);
+    p.fh.close().catch(() => {});
+    if (err) p.reject(err); else p.resolve(result);
+  }
+
+  /** Same contract as detection.detectFile(file). */
+  async detect(file, { timeoutMs }) {
+    let fh;
+    try { fh = await fs.promises.open(file, 'r'); } catch { return { ok: false, error: 'missing' }; }
+    const st = await fh.stat();
+    const ext = normalizedExt(file);
+    if (!st.isFile()) { await fh.close(); return { ok: false, error: 'not-a-file', ext, size: 0 }; }
+    let w;
+    try { w = await this.ensure(); } catch (e) { await fh.close(); throw e; }
+    const id = ++seq;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.finish(id, null, new TimeoutError('detect'));
+        if (this.w === w) { this.w = null; w.kill(); }
+      }, timeoutMs);
+      this.pending.set(id, { resolve, reject, timer, fh, w, size: st.size, served: 0 });
+      // Extension, size and time only: never the path.
+      w.post({ id, type: 'detect-source', ext, size: st.size, mtimeMs: st.mtimeMs });
+    });
+  }
+
+  /** Ends the worker (orderly: the helper then removes the job's AppContainer profile itself). */
+  async stop({ graceMs = 5000 } = {}) {
+    const w = this.w;
+    this.w = null;
+    if (!w) return;
+    w.shutdown();
+    if (!(await withDeadline(w.closed, graceMs))) { w.kill(); await withDeadline(w.closed, 15000); }
+  }
+}
+
 // Morph's own code folder (install folder when packaged, repository otherwise).
 const codeRoot = () => workerReadRoots({ exe: process.execPath })[0];
 
-module.exports = { PersistentWorker, runInFreshWorker, probeImageWorker, workerRuntime, workerReadRoots, codeRoot };
+module.exports = { PersistentWorker, ConfinedDetector, runInFreshWorker, probeImageWorker, workerRuntime, workerReadRoots, codeRoot };

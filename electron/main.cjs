@@ -8,7 +8,7 @@ const { autoUpdater } = require('electron-updater');
 
 const limits = require('./domain/limits.cjs');
 const { ToolRegistry } = require('./infra/ToolRegistry.cjs');
-const { PersistentWorker, runInFreshWorker, probeImageWorker } = require('./infra/WorkerHost.cjs');
+const { PersistentWorker, ConfinedDetector, runInFreshWorker, probeImageWorker } = require('./infra/WorkerHost.cjs');
 const { SettingsRepository, HistoryRepository, JobRepository } = require('./infra/repositories.cjs');
 const { OfficeProfileManager } = require('./infra/OfficeProfileManager.cjs');
 const { discardLeftovers } = require('./infra/OutputPublisher.cjs');
@@ -37,8 +37,18 @@ const detectionWorker = new PersistentWorker();
 const tools = new ToolRegistry({
   probeImages: () => probeImageWorker({ confinement: tools.confinement, fallback: () => detectionWorker.request({ type: 'probe' }, { timeoutMs: limits.deadlines.probe }) }),
 });
+const confinedDetector = new ConfinedDetector({ confinement: tools.confinement });
+// Detection: in the confined worker whenever confinement is enforced (it never opens the original;
+// Morph passes the byte ranges it asks for); refused when Windows confinement is unavailable;
+// the unconfined worker only where confinement does not apply (not Windows, or turned off).
+const detect = (file) => {
+  const o = { timeoutMs: limits.deadlines.detect };
+  if (tools.confinement.mode === 'enforced') return confinedDetector.detect(file, o);
+  if (tools.confinement.mode === 'unavailable') return Promise.reject(Object.assign(new Error(`confinement-unavailable:detect:${tools.confinement.reason}`), { code: 'confinement-unavailable' }));
+  return detectionWorker.request({ type: 'detect', file }, o);
+};
 const intake = new FileIntakeService({
-  detect: (file) => detectionWorker.request({ type: 'detect', file }, { timeoutMs: limits.deadlines.detect }),
+  detect,
   tools,
   limits: limits.intake,
 });
@@ -125,6 +135,7 @@ router.handle('update:download', () => autoUpdater.downloadUpdate().catch(() => 
 router.handle('update:install', async () => {
   await withDeadline(coordinator.cancelAll(), 20000);
   detectionWorker.stop();
+  confinedDetector.stop();
   autoUpdater.quitAndInstall(true, true);
 });
 
@@ -188,5 +199,6 @@ app.on('window-all-closed', async () => {
   quitting = true;
   await withDeadline(coordinator.cancelAll(), 10000);
   detectionWorker.stop();
+  confinedDetector.stop();
   app.quit();
 });
