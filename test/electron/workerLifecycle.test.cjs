@@ -33,13 +33,27 @@ function fakeConfinement(env = {}) {
     },
   };
 }
-// Running = exists and is not a zombie (a killed process whose parent died waits to be reaped by
-// PID 1, which in some containers never happens; it runs no code).
-const alive = (pid) => {
+// Running = the same process still exists. Elsewhere: exists and is not a zombie (a killed process
+// whose parent died waits to be reaped by PID 1, which in some containers never happens; it runs
+// no code). On Windows a PID is reused quickly, so the PID alone proves nothing (run 38760399959:
+// "alive" PID 3228 with no readable command line): the process must also be node.exe and have
+// started when the fixture recorded it.
+const alive = ({ pid, startMs }) => {
+  if (process.platform === 'win32') {
+    let out = '';
+    try {
+      out = require('child_process').execFileSync('powershell.exe', ['-NoProfile', '-Command',
+        `$p = Get-Process -Id ${pid} -ErrorAction SilentlyContinue; if ($p -and $p.StartTime) { '{0}|{1}' -f ([DateTimeOffset]$p.StartTime).ToUnixTimeMilliseconds(), $p.Path }`], { encoding: 'utf8' }).trim();
+    } catch { return false; }
+    if (!out) return false;
+    const [t, exe] = out.split('|');
+    return Math.abs(Number(t) - startMs) < 2000 && path.resolve(exe || '.').toLowerCase() === process.execPath.toLowerCase();
+  }
   try { process.kill(pid, 0); } catch { return false; }
   try { return !/^\d+ \(.*\) Z/.test(fs.readFileSync(`/proc/${pid}/stat`, 'utf8')); } catch { return true; }
 };
-const pidsFrom = (file) => Object.fromEntries(fs.readFileSync(file, 'utf8').trim().split('\n').map((l) => l.split(' ')).map(([k, v]) => [k, Number(v)]));
+// { helper: { pid, startMs }, engine: { pid, startMs } }
+const pidsFrom = (file) => Object.fromEntries(fs.readFileSync(file, 'utf8').trim().split('\n').map((l) => l.trim().split(' ')).map(([k, pid, startMs]) => [k, { pid: Number(pid), startMs: Number(startMs) }]));
 
 async function smallPng(dir) {
   const f = path.join(dir, 'in.png');
@@ -47,6 +61,20 @@ async function smallPng(dir) {
   return f;
 }
 const task = (dir, input) => ({ type: 'image', task: { input, ext: 'png', target: 'webp', quality: 'high', out: path.join(dir, 'out.webp') } });
+
+test('the liveness check sees a running process and not the same PID after it ended', async () => {
+  const { spawn } = require('child_process');
+  const child = spawn(process.execPath, ['-e', 'console.log(Math.round(Date.now() - process.uptime() * 1000)); setInterval(() => {}, 1000)'], { stdio: ['ignore', 'pipe', 'ignore'] });
+  const startMs = Number(await new Promise((r) => child.stdout.once('data', (d) => r(String(d).trim()))));
+  const p = { pid: child.pid, startMs };
+  try {
+    assert.equal(alive(p), true, 'running');
+    if (process.platform === 'win32') assert.equal(alive({ ...p, startMs: startMs - 60000 }), false, 'a different start time is a different process');
+  } finally {
+    await new Promise((r) => { child.once('exit', r); child.kill(); });
+  }
+  assert.equal(alive(p), false, 'ended');
+});
 
 test('normal completion returns the helper\'s real statistics, before success is reported', needsSharp, async () => {
   const ws = tmpDir('life-ok');
@@ -112,17 +140,14 @@ test('cancellation leaves no worker, no staging and no published output', { ...n
       await new Promise((r) => setTimeout(r, 20));
     }
     await new Promise((r) => setTimeout(r, 300)); // inside the encode
+    const tCancel = Date.now();
     S.coordinator.cancel(d.id);
     await S.coordinator.whenIdle();
+    const cancelMs = Date.now() - tCancel;
     const { helper, engine } = pidsFrom(pids);
     assert.equal(S.lastUpdate(d.id).state, 'cancelled');
-    // On failure, say what holds the PID: the same program, or another one after PID reuse.
-    const who = (pid) => {
-      if (process.platform !== 'win32') return '';
-      try { return require('child_process').execFileSync('powershell.exe', ['-NoProfile', '-Command', `(Get-CimInstance Win32_Process -Filter "ProcessId=${pid}").CommandLine`], { encoding: 'utf8' }).trim(); } catch { return '?'; }
-    };
-    assert.equal(alive(helper), false, `no helper left (PID ${helper}: ${who(helper)})`);
-    assert.equal(alive(engine), false, `no worker left (PID ${engine}: ${who(engine)})`);
+    assert.equal(alive(helper), false, `no helper left (PID ${helper.pid}; cancel took ${cancelMs} ms)`);
+    assert.equal(alive(engine), false, `no worker left (PID ${engine.pid}; cancel took ${cancelMs} ms)`);
     assert.deepEqual(fs.readdirSync(dir), ['big.png'], 'no output, no staging');
     assert.deepEqual(fs.existsSync(path.join(S.root, 'ws')) ? fs.readdirSync(path.join(S.root, 'ws')) : [], [], 'workspace removed');
   } finally { S.stop(); }
