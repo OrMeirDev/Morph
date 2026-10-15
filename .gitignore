@@ -8,3 +8,4 @@ bin/
 *.log
 e2e/output/
 native/out/
+confinement-measurements.json

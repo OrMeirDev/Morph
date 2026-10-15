@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
-const { Confinement, outcomeError } = require('../../electron/infra/Confinement.cjs');
+const { Confinement, outcomeError, withOverrides } = require('../../electron/infra/Confinement.cjs');
 const { runProcess } = require('../../electron/infra/ProcessRunner.cjs');
 const policy = require('../../electron/domain/confinementPolicy.cjs');
 const { TOOLS } = require('../../electron/infra/ToolRegistry.cjs');
@@ -15,7 +15,9 @@ const argAfter = (args, flag) => args.filter((_, i) => args[i - 1] === flag);
 test('every tool has a confinement policy with a known isolation', () => {
   assert.deepEqual(Object.keys(policy.tools).sort(), Object.keys(TOOLS).sort());
   for (const [name, t] of Object.entries(policy.tools)) {
-    assert.ok(['appcontainer', 'job'].includes(t.isolation), name);
+    assert.ok(['appcontainer', 'low-integrity'].includes(t.isolation), name);
+    const lim = policy.limits[name];
+    assert.ok(lim && lim.jobMemoryMb >= 1024 && lim.maxProcesses >= 8, `${name}: memory and process limits set`);
     if (t.isolation !== 'appcontainer') assert.ok(t.reason, `${name}: a tool outside the AppContainer needs the measured reason`);
   }
 });
@@ -50,17 +52,17 @@ test('enforced: AppContainer, read only the engine folder, write only the worksp
   const helper = process.execPath; // any existing file stands in for the helper here
   const c = new Confinement({ platform: 'win32', helper, disabled: false, ownedRoots: [bin] });
   assert.equal(c.status().mode, 'enforced');
-  const soffice = path.join(bin, 'libreoffice', 'program', 'soffice.com');
-  const profile = path.join(root, 'profile');
-  const p = c.prepare('soffice', soffice, ['--headless', 'in.odt'], { workspace: ws, write: [profile] });
+  const ffmpeg = path.join(bin, 'ffmpeg', 'ffmpeg.exe');
+  const extra = path.join(root, 'extra');
+  const p = c.prepare('ffmpeg', ffmpeg, ['-i', 'in.mp4', 'out.webm'], { workspace: ws, write: [extra] });
   assert.equal(p.exe, helper);
   assert.equal(p.confined, true);
   const sep = p.args.indexOf('--');
   const opts = p.args.slice(0, sep);
-  assert.deepEqual(p.args.slice(sep + 1), [soffice, '--headless', 'in.odt'], 'the engine call is passed through unchanged');
+  assert.deepEqual(p.args.slice(sep + 1), [ffmpeg, '-i', 'in.mp4', 'out.webm'], 'the engine call is passed through unchanged');
   assert.deepEqual(argAfter(opts, '--appcontainer'), ['Morph.Engines']);
-  assert.deepEqual(argAfter(opts, '--read'), [path.join(bin, 'libreoffice')], 'only the engine\'s own folder');
-  assert.deepEqual(argAfter(opts, '--write'), [ws, profile]);
+  assert.deepEqual(argAfter(opts, '--read'), [path.join(bin, 'ffmpeg')], 'only the engine\'s own folder');
+  assert.deepEqual(argAfter(opts, '--write'), [ws, extra]);
   assert.deepEqual(argAfter(opts, '--parent'), [String(process.pid)]);
   assert.deepEqual(argAfter(opts, '--cwd'), [ws]);
   for (const k of ['TEMP', 'TMP', 'APPDATA', 'LOCALAPPDATA', 'CALIBRE_CONFIG_DIRECTORY', 'CALIBRE_TEMP_DIR']) assert.ok(p.env[k].startsWith(ws), `${k} inside the workspace`);
@@ -100,4 +102,29 @@ test('ProcessRunner: a successful confined call returns the helper\'s accounting
   const r = await runProcess('ignored', [], { timeoutMs: 10000, name: 'x', launch });
   assert.equal(r.confinement.peakJobMemory, 42);
   assert.match(r.stdout, /hi/);
+});
+
+test('enforced, low-integrity engines: Low token, Low labels on the workspace and given folders, no read grants', () => {
+  const root = tmpDir('conf-low');
+  const bin = path.join(root, 'bin');
+  const ws = path.join(root, 'ws');
+  fs.mkdirSync(ws);
+  const c = new Confinement({ platform: 'win32', helper: process.execPath, disabled: false, ownedRoots: [bin] });
+  const p = c.prepare('soffice', path.join(bin, 'libreoffice', 'program', 'soffice.com'), ['--version'], { workspace: ws, write: [path.join(root, 'profile')] });
+  const opts = p.args.slice(0, p.args.indexOf('--'));
+  assert.ok(opts.includes('--low-integrity'));
+  assert.ok(!opts.includes('--appcontainer'));
+  assert.deepEqual(argAfter(opts, '--read'), []);
+  assert.deepEqual(argAfter(opts, '--write'), [ws, path.join(root, 'profile')]);
+  assert.deepEqual(argAfter(opts, '--job-memory'), [String(policy.limits.soffice.jobMemoryMb)]);
+  assert.deepEqual(argAfter(opts, '--max-processes'), [String(policy.limits.soffice.maxProcesses)]);
+  assert.match(c.status().notes.join(' '), /Low integrity/);
+});
+
+test('MORPH_CONFINE_LIMITS overrides only known tools with positive integers', () => {
+  const base = { soffice: { jobMemoryMb: 100, maxProcesses: 5 } };
+  assert.deepEqual(withOverrides(base, '{"soffice":{"jobMemoryMb":4096},"nope":{"jobMemoryMb":1}}').soffice, { jobMemoryMb: 4096, maxProcesses: 5 });
+  assert.equal(withOverrides(base, '{"soffice":{"jobMemoryMb":-1}}').soffice.jobMemoryMb, 100);
+  assert.equal(withOverrides(base, 'not json'), base);
+  assert.equal(withOverrides(base, undefined), base);
 });

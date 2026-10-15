@@ -5,8 +5,14 @@
 //
 //   --appcontainer <name>  run in the AppContainer <name> (profile created if missing) with no
 //                          capabilities: no network, no access to files unless granted below
-//   --read <path>          grant the AppContainer read + execute on <path> (inherited by children)
-//   --write <path>         grant the AppContainer modify on <path> (inherited by children)
+//   --low-integrity        instead of an AppContainer (for engines that cannot run in one): a
+//                          restricted copy of the caller's token at Low integrity, all privileges
+//                          but traverse dropped, Administrators deny-only. Windows then refuses
+//                          writes to anything not labelled Low (all normal user files); reads and
+//                          the network are NOT restricted in this mode.
+//   --read <path>          AppContainer: grant read + execute on <path> (inherited by children)
+//   --write <path>         AppContainer: grant modify on <path>; low integrity: label <path> Low
+//                          so the engine may write there (both inherited by children)
 //   --job-memory <MiB>     job-wide committed-memory limit
 //   --process-memory <MiB> per-process committed-memory limit
 //   --max-processes <n>    simultaneously active processes in the job
@@ -41,6 +47,7 @@
 
 typedef struct {
   const wchar_t *appContainer;
+  int lowIntegrity;
   const wchar_t *read[MAX_GRANTS];
   int nRead;
   const wchar_t *write[MAX_GRANTS];
@@ -59,6 +66,7 @@ typedef struct {
   char error[512];
   char sid[192];
   int appContainer;
+  int lowIntegrity;
   int orphansKilled;
   DWORD peakActive;
   DWORD grantMs;
@@ -94,7 +102,8 @@ static void writeStats(const Options *o, HANDLE job) {
   }
   FILE *f = _wfopen(o->stats, L"wb");
   if (!f) return;
-  fprintf(f, "{\"outcome\":\"%s\",\"exitCode\":%lu,\"appContainer\":%s,\"sid\":\"", R.outcome, (unsigned long)R.exitCode, R.appContainer ? "true" : "false");
+  fprintf(f, "{\"outcome\":\"%s\",\"exitCode\":%lu,\"appContainer\":%s,\"lowIntegrity\":%s,\"sid\":\"", R.outcome, (unsigned long)R.exitCode,
+          R.appContainer ? "true" : "false", R.lowIntegrity ? "true" : "false");
   jsonEscape(f, R.sid);
   fprintf(f, "\",\"error\":\"");
   jsonEscape(f, R.error);
@@ -115,7 +124,8 @@ static int parseArgs(int argc, wchar_t **argv, Options *o) {
   for (int i = 1; i < argc; i++) {
     const wchar_t *a = argv[i];
     const wchar_t *v = i + 1 < argc ? argv[i + 1] : NULL;
-    if (!wcscmp(a, L"--")) { o->argStart = i + 1; return o->argStart < argc; }
+    if (!wcscmp(a, L"--")) { o->argStart = i + 1; return o->argStart < argc && !(o->appContainer && o->lowIntegrity); }
+    if (!wcscmp(a, L"--low-integrity")) { o->lowIntegrity = 1; continue; }
     if (!v) return 0;
     if (!wcscmp(a, L"--appcontainer")) o->appContainer = v;
     else if (!wcscmp(a, L"--read")) { if (o->nRead == MAX_GRANTS) return 0; o->read[o->nRead++] = v; }
@@ -178,6 +188,57 @@ done:
   return result;
 }
 
+// A restricted, Low-integrity copy of this process's token for engines that cannot run in an
+// AppContainer. NULL on failure (error recorded).
+static HANDLE lowToken(void) {
+  HANDLE self = NULL, restricted = NULL;
+  if (!OpenProcessToken(GetCurrentProcess(), TOKEN_DUPLICATE | TOKEN_QUERY | TOKEN_ASSIGN_PRIMARY | TOKEN_ADJUST_DEFAULT, &self)) {
+    setError("OpenProcessToken", GetLastError());
+    return NULL;
+  }
+  BYTE admins[SECURITY_MAX_SID_SIZE], low[SECURITY_MAX_SID_SIZE];
+  DWORD n1 = sizeof admins, n2 = sizeof low;
+  CreateWellKnownSid(WinBuiltinAdministratorsSid, NULL, admins, &n1);
+  CreateWellKnownSid(WinLowLabelSid, NULL, low, &n2);
+  SID_AND_ATTRIBUTES denyOnly = { (PSID)admins, 0 };
+  if (!CreateRestrictedToken(self, DISABLE_MAX_PRIVILEGE, 1, &denyOnly, 0, NULL, 0, NULL, &restricted)) {
+    setError("CreateRestrictedToken", GetLastError());
+    CloseHandle(self);
+    return NULL;
+  }
+  CloseHandle(self);
+  TOKEN_MANDATORY_LABEL tml = { { (PSID)low, SE_GROUP_INTEGRITY } };
+  if (!SetTokenInformation(restricted, TokenIntegrityLevel, &tml, sizeof tml + GetLengthSid((PSID)low))) {
+    setError("SetTokenInformation(Low)", GetLastError());
+    CloseHandle(restricted);
+    return NULL;
+  }
+  return restricted;
+}
+
+// Labels `path` Low (inherited by children) so a Low-integrity engine may write there.
+// Returns 0, 1 when the volume keeps no labels (FAT32/exFAT), or -1 with *err.
+static int labelLow(const wchar_t *path, DWORD *err) {
+  DWORD attrs = GetFileAttributesW(path);
+  if (attrs == INVALID_FILE_ATTRIBUTES) { *err = GetLastError(); return -1; }
+  PSECURITY_DESCRIPTOR sd = NULL;
+  PACL sacl = NULL;
+  BOOL present = FALSE, defaulted = FALSE;
+  const wchar_t *sddl = (attrs & FILE_ATTRIBUTE_DIRECTORY) ? L"S:(ML;OICI;NW;;;LW)" : L"S:(ML;;NW;;;LW)";
+  if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl, SDDL_REVISION_1, &sd, NULL)
+      || !GetSecurityDescriptorSacl(sd, &present, &sacl, &defaulted)) {
+    *err = GetLastError();
+    if (sd) LocalFree(sd);
+    return -1;
+  }
+  DWORD rc = SetNamedSecurityInfoW((LPWSTR)path, SE_FILE_OBJECT, LABEL_SECURITY_INFORMATION, NULL, NULL, NULL, sacl);
+  LocalFree(sd);
+  if (rc == ERROR_SUCCESS) return 0;
+  if (rc == ERROR_NOT_SUPPORTED || rc == ERROR_INVALID_FUNCTION) return 1;
+  *err = rc;
+  return -1;
+}
+
 // Quoting that CommandLineToArgvW and the MSVC runtime parse back to the same argument.
 static void appendQuoted(wchar_t *buf, size_t cap, size_t *len, const wchar_t *arg) {
 #define PUT(ch) do { if (*len + 1 < cap) buf[(*len)++] = (ch); } while (0)
@@ -224,7 +285,7 @@ int wmain(int argc, wchar_t **argv) {
 
   Options o = { 0 };
   if (!parseArgs(argc, argv, &o)) {
-    fwprintf(stderr, L"usage: morph-confine.exe [--appcontainer name] [--read p] [--write p] [--job-memory MiB] "
+    fwprintf(stderr, L"usage: morph-confine.exe [--appcontainer name | --low-integrity] [--read p] [--write p] [--job-memory MiB] "
                      L"[--process-memory MiB] [--max-processes n] [--parent pid] [--cwd dir] [--stats file] -- exe [args]\n");
     return (int)MC_EXIT_USAGE;
   }
@@ -297,6 +358,28 @@ int wmain(int argc, wchar_t **argv) {
     caps.AppContainerSid = sid;
     R.appContainer = 1;
   }
+  HANDLE token = NULL;
+  if (o.lowIntegrity) {
+    ULONGLONG t0 = GetTickCount64();
+    for (int i = 0; i < o.nWrite; i++) {
+      DWORD err = 0;
+      int g = labelLow(o.write[i], &err);
+      char p[400];
+      toUtf8(o.write[i], p, sizeof p);
+      if (g < 0) {
+        snprintf(R.error, sizeof R.error, "labelling %s Low failed (Windows error %lu)", p, (unsigned long)err);
+        return (int)finish(&o, job, MC_EXIT_SETUP);
+      }
+      if (g == 1) {
+        size_t used = strlen(R.unprotected);
+        snprintf(R.unprotected + used, sizeof R.unprotected - used, "%s%s", used ? ";" : "", p);
+      }
+    }
+    R.grantMs = (DWORD)(GetTickCount64() - t0);
+    token = lowToken();
+    if (!token) return (int)finish(&o, job, MC_EXIT_SETUP);
+    R.lowIntegrity = 1;
+  }
 
   // 3. Start the engine already inside the job (and the AppContainer), with only its stdio inherited.
   HANDLE std[3] = { GetStdHandle(STD_INPUT_HANDLE), GetStdHandle(STD_OUTPUT_HANDLE), GetStdHandle(STD_ERROR_HANDLE) };
@@ -335,8 +418,11 @@ int wmain(int argc, wchar_t **argv) {
   if (len + 1 >= cap) { snprintf(R.error, sizeof R.error, "command line too long"); return (int)finish(&o, job, MC_EXIT_SETUP); }
 
   PROCESS_INFORMATION pi = { 0 };
-  if (!CreateProcessW(argv[o.argStart], cmd, NULL, NULL, nInherit > 0, EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT | CREATE_NO_WINDOW,
-                      NULL, o.cwd, &si.StartupInfo, &pi)) {
+  DWORD flags = EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT | CREATE_NO_WINDOW;
+  BOOL started = token
+    ? CreateProcessAsUserW(token, argv[o.argStart], cmd, NULL, NULL, nInherit > 0, flags, NULL, o.cwd, &si.StartupInfo, &pi)
+    : CreateProcessW(argv[o.argStart], cmd, NULL, NULL, nInherit > 0, flags, NULL, o.cwd, &si.StartupInfo, &pi);
+  if (!started) {
     setError("CreateProcess(engine)", GetLastError());
     return (int)finish(&o, job, MC_EXIT_SETUP);
   }

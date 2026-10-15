@@ -103,19 +103,30 @@ test('Office profile: a first start cancelled midway, then a damaged profile, bo
     const base = path.join(S.root, 'prof');
     S.coordinator.officeProfiles = new OfficeProfileManager({ baseDir: base });
     const file = makeRichOdt(path.join(S.dirOf('p'), 'letter.odt'));
-    // Stop while the profile's first start (soffice --terminate_after_init) is running: the test
-    // presses Stop half a second after that very command starts.
+    // Stop while the profile's first start (soffice --terminate_after_init) is midway: the moment
+    // LibreOffice has begun writing the profile (its user/ folder exists) and before it returns.
+    // A fixed delay raced: on a warm runner the whole first start took under 500 ms.
     const [d] = await S.intake.detectPaths([file]);
     const runTool = S.coordinator.runTool;
+    let stoppedMidway = false;
     S.coordinator.runTool = (name, args, o) => {
       const p = runTool(name, args, o);
-      if (args.includes('--terminate_after_init')) setTimeout(() => S.coordinator.cancel(d.id), 500);
+      if (args.includes('--terminate_after_init')) {
+        let done = false;
+        p.then(() => { done = true; }, () => { done = true; });
+        const dir = S.coordinator.officeProfiles.profileDirFor(S.tools.path('soffice'));
+        const poll = setInterval(() => {
+          if (done) { clearInterval(poll); return; }
+          if (fs.existsSync(path.join(dir, 'user'))) { clearInterval(poll); stoppedMidway = true; S.coordinator.cancel(d.id); }
+        }, 5);
+      }
       return p;
     };
     S.coordinator.enqueue({ fileId: d.id, target: 'pdf' });
     await S.coordinator.whenIdle();
     S.coordinator.runTool = runTool;
     assert.equal(S.lastUpdate(d.id).state, 'cancelled');
+    assert.ok(stoppedMidway, 'Stop landed while the first start was writing the profile');
     const profileDir = S.coordinator.officeProfiles.profileDirFor(S.tools.path('soffice'));
     assert.equal(OfficeProfileManager.healthy(profileDir), false, 'an interrupted first start is never marked ready');
     assert.deepEqual(processesUnder('libreoffice'), [], 'the interrupted first start left no process');

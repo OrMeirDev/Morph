@@ -1,15 +1,17 @@
 // Runs engines confined on Windows (backlog D2), through native/confine/morph-confine.exe.
 //
-// Two separate guarantees, reported separately:
-//   - lifetime and resources (Job Object): every process an engine starts belongs to one job that
-//     is killed on cancel, when Morph dies, when the engine exits leaving processes behind, or when
-//     a memory/process limit is hit;
-//   - file and network access (AppContainer with no capabilities): the engine reads only its own
-//     install folder, writes only to the job's private workspace (plus the LibreOffice profile),
-//     and has no network, loopback included.
-// A tool runs in the AppContainer unless domain/confinementPolicy.cjs records a measured reason
-// why it cannot; then it still runs in the Job Object, and the status says so. Nothing falls back
-// silently: if confinement is required and unavailable, engines are refused with the reason.
+// Separate guarantees, reported separately:
+//   - lifetime and resources (Job Object, every engine): every process an engine starts belongs to
+//     one job that is killed on cancel, when Morph dies, when the engine exits leaving processes
+//     behind, or when a memory/process limit is hit;
+//   - file and network access, per engine (domain/confinementPolicy.cjs, chosen from measurements):
+//       'appcontainer'   AppContainer with no capabilities: reads only its own install folder,
+//                        writes only to the job workspace, no network (loopback included);
+//       'low-integrity'  restricted Low-integrity token, for engines measured not to run in an
+//                        AppContainer: writes only where Morph labelled Low (the workspace, the
+//                        LibreOffice profile), but may READ the user's files and use the network.
+// Nothing falls back silently: if confinement is required and unavailable, engines are refused
+// with the reason, and the status lists each engine's isolation.
 //
 // Modes (status().mode):
 //   enforced     Windows, helper present: as above
@@ -39,6 +41,22 @@ const isInside = (child, parent) => {
   return !!rel && !rel.startsWith('..') && !path.isAbsolute(rel);
 };
 
+// MORPH_CONFINE_LIMITS='{"soffice":{"jobMemoryMb":4096}}' raises or lowers a limit (diagnostics,
+// unusually large files). Unknown tools or non-numeric values are ignored.
+function withOverrides(base, raw = process.env.MORPH_CONFINE_LIMITS) {
+  if (!raw) return base;
+  let o;
+  try { o = JSON.parse(raw); } catch { return base; }
+  const out = { ...base };
+  for (const [tool, v] of Object.entries(o || {})) {
+    if (!policy.tools[tool] || !v || typeof v !== 'object') continue;
+    const clean = {};
+    for (const k of ['jobMemoryMb', 'maxProcesses']) if (Number.isInteger(v[k]) && v[k] > 0) clean[k] = v[k];
+    out[tool] = { ...(out[tool] || {}), ...clean };
+  }
+  return out;
+}
+
 class Confinement {
   /**
    * @param {object} o
@@ -48,7 +66,7 @@ class Confinement {
    * @param {string[]} [o.ownedRoots] folders Morph owns (bin roots): only these get read grants
    * @param {Record<string, object>} [o.limits] per-tool limits, default domain/confinementPolicy.cjs
    */
-  constructor({ platform = process.platform, helper, disabled = process.env.MORPH_CONFINEMENT === 'off', ownedRoots = [], limits = policy.limits } = {}) {
+  constructor({ platform = process.platform, helper, disabled = process.env.MORPH_CONFINEMENT === 'off', ownedRoots = [], limits = withOverrides(policy.limits) } = {}) {
     this.ownedRoots = ownedRoots.map((r) => path.resolve(r));
     this.limits = limits;
     this.helper = null;
@@ -104,6 +122,9 @@ class Confinement {
       const root = this.engineRoot(exe);
       if (root) h.push('--read', root);
       for (const w of [workspace, ...write]) h.push('--write', w);
+    } else if (t.isolation === 'low-integrity') {
+      h.push('--low-integrity');
+      for (const w of [workspace, ...write]) h.push('--write', w);
     }
     if (lim.jobMemoryMb) h.push('--job-memory', String(lim.jobMemoryMb));
     if (lim.maxProcesses) h.push('--max-processes', String(lim.maxProcesses));
@@ -140,4 +161,4 @@ function outcomeError(stats, name) {
   }
 }
 
-module.exports = { Confinement, outcomeError, PROFILE, HELPER_NAME };
+module.exports = { Confinement, outcomeError, withOverrides, PROFILE, HELPER_NAME };

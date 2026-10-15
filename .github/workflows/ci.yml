@@ -217,6 +217,7 @@ jobs:
             installer.json
             autoupdate.json
             confinement.log
+            confinement-measurements.json
             signed-files.txt
             native/out/morph-confine.json
           if-no-files-found: warn
