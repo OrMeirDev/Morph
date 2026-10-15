@@ -8,7 +8,7 @@ async function run(ctx) {
   let ext = job.ext;
   if (ext === 'bmp' || ext === 'ico') {
     input = ctx.workspace.file('in.png');
-    await ctx.run('ffmpeg', ['-hide_banner', '-nostdin', '-n', '-i', job.input, '-frames:v', '1', '-update', '1', input], { timeoutMs: limits.deadlines.ffmpeg });
+    await ctx.run('ffmpeg', ['-hide_banner', '-nostdin', '-n', '-i', await ctx.input(), '-frames:v', '1', '-update', '1', input], { timeoutMs: limits.deadlines.ffmpeg });
     ext = 'png';
   }
   ctx.throwIfCancelled();

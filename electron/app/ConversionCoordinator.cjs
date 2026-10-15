@@ -1,7 +1,8 @@
 // The one owner of conversion jobs: queue, concurrency, cancellation, verification, publication
 // and history. The renderer sends commands (enqueue, cancel) and observes job updates; it never
 // runs, finishes or records a conversion itself.
-const fsp = require('fs').promises;
+const fs = require('fs');
+const fsp = fs.promises;
 const path = require('path');
 const crypto = require('crypto');
 const { capabilityFor } = require('../domain/capabilities.cjs');
@@ -157,6 +158,7 @@ class ConversionCoordinator {
     if (job.cancelRequested) abort.abort();
     const throwIfCancelled = () => { if (abort.signal.aborted) throw new CancelledError(); };
     let workspace = null;
+    let inputCopy = null;
     let published;
     try {
       this.setState(job, 'preparing');
@@ -172,12 +174,20 @@ class ConversionCoordinator {
         throwIfCancelled,
         progress: (p) => this.progress(job, p),
         toolPath: (name) => this.tools.path(name),
-        stagingFile: (ext) => {
-          const p = stagingPath(job.outDir, job.id, ext);
-          this.journal.addLeftover(job.id, p);
-          return p;
+        // Engines never see the original or the output folder: they get a copy of the input inside
+        // the job's workspace and write there; publish() below moves the result out (D2).
+        input: () => {
+          inputCopy = inputCopy || (async () => {
+            const dir = workspace.file('input');
+            await fsp.mkdir(dir);
+            const copy = path.join(dir, path.basename(job.input));
+            await fsp.copyFile(job.input, copy, fs.constants.COPYFILE_EXCL);
+            this.intake.revalidate(job.fileId); // the original did not change while it was copied
+            return copy;
+          })();
+          return inputCopy;
         },
-        run: (name, args, o = {}) => this.runTool(name, args, { ...o, signal: abort.signal }),
+        run: (name, args, o = {}) => this.runTool(name, args, { ...o, signal: abort.signal, workspace: workspace.dir }),
         worker: (msg, o = {}) => this.runWorker(msg, { ...o, signal: abort.signal, onProgress: (p) => this.progress(job, p) }),
         officeProfiles: this.officeProfiles,
       };

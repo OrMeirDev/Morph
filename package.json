@@ -13,8 +13,8 @@
     "test": "node --test --test-reporter=spec \"test/**/*.test.mjs\" \"test/**/*.test.cjs\"",
     "check:imports": "node scripts/check-imports.cjs",
     "check": "npm run check:imports && npm test && npm run build",
-    "dist": "node scripts/bin-manifest.cjs verify && vite build && electron-builder --win nsis --x64",
-    "release": "node scripts/bin-manifest.cjs verify && npm run check && vite build && electron-builder --win nsis --x64 --publish always",
+    "dist": "node scripts/bin-manifest.cjs verify && node native/confine/build.cjs && vite build && electron-builder --win nsis --x64",
+    "release": "node scripts/bin-manifest.cjs verify && node native/confine/build.cjs && npm run check && vite build && electron-builder --win nsis --x64 --publish always",
     "fetch-bin": "node scripts/fetch-engines.cjs --require-pinned",
     "e2e:glass-menus": "vite build && electron e2e/glass-menus.cjs",
     "e2e:glass-pickers": "vite build && electron e2e/glass-pickers.cjs",
@@ -22,7 +22,8 @@
     "e2e:flow": "cross-env VITE_E2E_HOOKS=1 vite build && electron e2e/conversion-flow.cjs",
     "test:engines": "node --test --test-reporter=spec test/electron/engines.test.cjs test/electron/documents.test.cjs test/electron/ebooks.test.cjs",
     "bin:record": "node scripts/bin-manifest.cjs record",
-    "bin:verify": "node scripts/bin-manifest.cjs verify"
+    "bin:verify": "node scripts/bin-manifest.cjs verify",
+    "build:confine": "node native/confine/build.cjs"
   },
   "repository": "github:OrMeirDev/Morph",
   "dependencies": {
@@ -66,6 +67,10 @@
         "from": "bin",
         "to": "bin"
       },
+      {
+        "from": "native/out/morph-confine.exe",
+        "to": "native/morph-confine.exe"
+      },
       "THIRD_PARTY_NOTICES.md"
     ],
     "publish": [
@@ -85,7 +90,11 @@
           ]
         }
       ],
-      "icon": "build/icon.ico"
+      "icon": "build/icon.ico",
+      "signExts": [
+        "morph-confine.exe",
+        "!.exe"
+      ]
     },
     "nsis": {
       "oneClick": false,
@@ -98,7 +107,8 @@
         "he_IL"
       ],
       "language": "1037",
-      "artifactName": "Morph-Setup-${version}.${ext}"
+      "artifactName": "Morph-Setup-${version}.${ext}",
+      "include": "build/installer.nsh"
     }
   },
   "engines": {

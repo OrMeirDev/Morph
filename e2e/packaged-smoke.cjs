@@ -84,6 +84,8 @@ async function main() {
     const probeMs = Date.now() - t0;
     for (const k of ['ffmpeg', 'images', 'poppler', 'libreoffice', 'calibre', 'sevenzip']) check(`engine verified: ${k}`, tools?.[k], tools?.details);
     console.log('tool status after', probeMs, 'ms from launch:', JSON.stringify(tools?.details));
+    // D2: the installed app runs every engine confined (morph-confine.exe in resources\native).
+    check('engines confined (AppContainer + Job Object)', tools?.confinement?.mode === 'enforced', tools?.confinement);
 
     const wantSettings = opt('--expect-settings');
     if (wantSettings) {

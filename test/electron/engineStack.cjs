@@ -23,10 +23,10 @@ const { FileIntakeService } = require('../../electron/app/FileIntakeService.cjs'
 const { ConversionCoordinator } = require('../../electron/app/ConversionCoordinator.cjs');
 const adapters = require('../../electron/adapters/index.cjs');
 
-function createStack(tag) {
+function createStack(tag, { confinement } = {}) {
   const root = tmpDir(tag);
   const worker = new PersistentWorker();
-  const tools = new ToolRegistry({ probeImages: () => worker.request({ type: 'probe' }, { timeoutMs: 30000 }) });
+  const tools = new ToolRegistry({ probeImages: () => worker.request({ type: 'probe' }, { timeoutMs: 30000 }), confinement });
   const intake = new FileIntakeService({ detect: (f) => worker.request({ type: 'detect', file: f }, { timeoutMs: 15000 }), tools, limits: limits.intake });
   const updates = [];
   const history = [];
@@ -38,7 +38,7 @@ function createStack(tag) {
     journal: new JobRepository(path.join(root, 'state')),
     adapters,
     officeProfiles: new OfficeProfileManager({ baseDir: path.join(root, 'lo') }),
-    runTool: (name, args, o) => { const exe = tools.path(name); return exe ? runProcess(exe, args, { ...o, name }) : Promise.reject(new Error(`missing-tool:${name}`)); },
+    runTool: (name, args, o) => tools.run(name, args, o),
     runWorker: runInFreshWorker,
     emit: (u) => updates.push(u),
     workspaceRoot: path.join(root, 'ws'),

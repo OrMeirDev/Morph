@@ -186,12 +186,14 @@ test('Stop during publication, after the name is reserved but before the final r
   assert.deepEqual(t.journal.all(), {});
 });
 
-test('an adapter that honours the signal ends cancelled, and a staged file is removed', async () => {
+test('an adapter that honours the signal ends cancelled, and its partial output goes with the workspace', async () => {
   const staged = gate();
+  let ws;
   const t = setup({
     adapter: {
       run: async (ctx) => {
-        fs.writeFileSync(ctx.stagingFile('webp'), 'partial');
+        ws = ctx.workspace.dir;
+        fs.writeFileSync(ctx.workspace.file('out.webp'), 'partial');
         staged.hit();
         await untilAborted(ctx.signal);
       },
@@ -204,6 +206,20 @@ test('an adapter that honours the signal ends cancelled, and a staged file is re
   await t.c.whenIdle();
   assert.equal(finalState(t.updates, id), 'cancelled');
   assert.deepEqual(t.outputs(), []);
+  assert.equal(fs.existsSync(ws), false, 'workspace removed');
+});
+
+test('engines get a copy of the input inside the workspace, never the original', async () => {
+  let copy;
+  const t = setup({ adapter: { run: async (ctx) => { copy = await ctx.input(); assert.equal(await ctx.input(), copy, 'copied once'); return writeWebp(ctx); } } });
+  const id = t.addFile();
+  t.c.enqueue({ fileId: id, target: 'webp' });
+  await t.c.whenIdle();
+  assert.equal(finalState(t.updates, id), 'completed');
+  assert.notEqual(path.resolve(copy), path.resolve(t.input));
+  assert.equal(path.basename(copy), path.basename(t.input), 'same file name (engines that look at extensions)');
+  assert.ok(path.resolve(copy).startsWith(path.resolve(t.dir, 'ws') + path.sep), 'inside the job workspace');
+  assert.deepEqual(fs.readFileSync(t.input), PNG, 'original untouched');
 });
 
 test('an output that is not the requested format is never published', async () => {
@@ -219,7 +235,7 @@ test('an output that is not the requested format is never published', async () =
 });
 
 test('engine failure leaves nothing behind and reports the engine message', async () => {
-  const t = setup({ adapter: { run: async (ctx) => { fs.writeFileSync(ctx.stagingFile('webp'), 'half'); throw new Error('Invalid data found when processing input'); } } });
+  const t = setup({ adapter: { run: async (ctx) => { fs.writeFileSync(ctx.workspace.file('out.webp'), 'half'); throw new Error('Invalid data found when processing input'); } } });
   const id = t.addFile();
   t.c.enqueue({ fileId: id, target: 'webp' });
   await t.c.whenIdle();

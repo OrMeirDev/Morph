@@ -68,8 +68,10 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts --no-fund --no-audit
       - run: npm run check:imports
-      # Unit tests, sharp image matrix, 7-Zip archive tests and the taskkill
-      # process-tree test run here; ffmpeg/Poppler/LibreOffice/Calibre directions skip without bin/.
+      - name: Build the confinement helper (MSVC, D2)
+        run: node native/confine/build.cjs
+      # Unit tests, sharp image matrix, 7-Zip archive tests (7-Zip confined in the AppContainer) and
+      # the process-tree tests run here; ffmpeg/Poppler/LibreOffice/Calibre directions skip without bin/.
       - run: npm test
       - run: npm run build
 
@@ -116,6 +118,11 @@ jobs:
         run: node scripts/bin-manifest.cjs record --out bin-manifest.ci.json
       - name: Payload matches the committed bin-manifest.json
         run: node scripts/bin-manifest.cjs verify
+      - name: Build the confinement helper (MSVC, D2)
+        run: node native/confine/build.cjs
+      - name: Confinement on real Windows first (fail fast; also part of npm test below)
+        shell: bash
+        run: node --test --test-reporter=spec test/windows/confinement.test.cjs 2>&1 | tee confinement.log; test ${PIPESTATUS[0]} -eq 0
       - name: Prepare FAT32, exFAT and SMB test locations
         shell: pwsh
         run: |
@@ -142,12 +149,35 @@ jobs:
       - name: Build the app and the installer (version 1.0.4-ci; signed only if a certificate is configured)
         shell: bash
         env:
-          # electron-builder signs when these exist (owner action, docs/RELEASING.md); absent = unsigned.
+          # electron-builder signs when one of these is configured (owner action, docs/RELEASING.md §5);
+          # absent = unsigned and the signature step below reports Pending. Option A: a .pfx certificate.
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          # Option B: Azure Trusted Signing (service principal secrets + account variables).
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          TS_ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          TS_ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          TS_PROFILE: ${{ vars.AZURE_SIGNING_PROFILE }}
+          MORPH_PUBLISHER: ${{ vars.MORPH_PUBLISHER }}
         run: |
           npx vite build
-          npx electron-builder --win nsis --x64 --publish never -c.extraMetadata.version=1.0.4-ci
+          SIGN=()
+          if [ -n "$TS_ENDPOINT" ]; then
+            SIGN=(-c.win.azureSignOptions.endpoint="$TS_ENDPOINT" -c.win.azureSignOptions.codeSigningAccountName="$TS_ACCOUNT"
+                  -c.win.azureSignOptions.certificateProfileName="$TS_PROFILE" -c.win.azureSignOptions.publisherName="$MORPH_PUBLISHER")
+          fi
+          npx electron-builder --win nsis --x64 --publish never -c.extraMetadata.version=1.0.4-ci "${SIGN[@]}" 2>&1 | tee build.log; test ${PIPESTATUS[0]} -eq 0
+      - name: Only Morph's own executables are sent for signing (never the third-party engines)
+        shell: bash
+        run: |
+          # electron-builder logs every file it would sign; with no certificate it says "skipped".
+          grep -iE "sign" build.log | grep -oE '(path|file)=[^ ]+' | sed -E 's/^(path|file)=//' | sort -u | tee signed-files.txt
+          ! grep -iE 'resources.bin' signed-files.txt
+          grep -qi 'resources.native.morph-confine.exe' signed-files.txt
+          grep -qi 'win-unpacked.Morph.exe' signed-files.txt
+          test -f release/win-unpacked/resources/native/morph-confine.exe
       - name: Code signature (required once MORPH_PUBLISHER is set; reported as pending before)
         shell: bash
         run: node e2e/signature-check.cjs release/Morph-Setup-1.0.4-ci.exe release/win-unpacked/Morph.exe ${{ vars.MORPH_PUBLISHER && format('--publisher "{0}"', vars.MORPH_PUBLISHER) || '' }} --report signature.json
@@ -186,4 +216,7 @@ jobs:
             signature.json
             installer.json
             autoupdate.json
+            confinement.log
+            signed-files.txt
+            native/out/morph-confine.json
           if-no-files-found: warn

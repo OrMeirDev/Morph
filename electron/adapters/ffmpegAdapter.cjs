@@ -1,13 +1,14 @@
-// Video, audio, GIF and APNG through ffmpeg. Writes straight into the same-disk staging file so a
-// large video is never copied twice.
+// Video, audio, GIF and APNG through ffmpeg. ffmpeg reads a copy of the input inside the job
+// workspace and writes its output there (the only folder it may write to, D2); publishing moves the
+// result to the destination.
 const limits = require('../domain/limits.cjs');
 const { isCancelled } = require('../infra/errors.cjs');
 
 const CRF = { high: 20, medium: 24, small: 28 };
 
-async function probeDuration(ctx) {
+async function probeDuration(ctx, input) {
   try {
-    const { stdout } = await ctx.run('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=nw=1:nk=1', ctx.job.input], { timeoutMs: limits.deadlines.probe, captureStdout: true });
+    const { stdout } = await ctx.run('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=nw=1:nk=1', input], { timeoutMs: limits.deadlines.probe, captureStdout: true });
     const d = parseFloat(stdout);
     return Number.isFinite(d) && d > 0 ? d : null;
   } catch (e) {
@@ -58,10 +59,11 @@ function ffmpegArgs(target, { quality = 'high', maxHeight = null }) {
 
 async function run(ctx) {
   const { job } = ctx;
-  const duration = await probeDuration(ctx);
-  const out = ctx.stagingFile(job.target);
-  // -n: never overwrite (the staging name is new for every job; this guards against surprises).
-  const args = ['-hide_banner', '-nostdin', '-n', '-i', job.input, ...ffmpegArgs(job.target, job), '-progress', 'pipe:1', '-nostats', out];
+  const input = await ctx.input();
+  const duration = await probeDuration(ctx, input);
+  const out = ctx.workspace.file(`out.${job.target}`);
+  // -n: never overwrite (the name is new in a fresh workspace; this guards against surprises).
+  const args = ['-hide_banner', '-nostdin', '-n', '-i', input, ...ffmpegArgs(job.target, job), '-progress', 'pipe:1', '-nostats', out];
   await ctx.run('ffmpeg', args, {
     timeoutMs: limits.deadlines.ffmpeg,
     onLine: (line) => {

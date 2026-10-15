@@ -44,14 +44,17 @@ class OfficeProfileManager {
     }
   }
 
+  // The profile folder is created here, not by LibreOffice: a confined engine may write only to
+  // folders it is given (`write`), never create one next to them.
   async initialise(ctx, dir) {
     await fsp.rm(dir, { recursive: true, force: true });
-    await ctx.run('soffice', ['--headless', '--norestore', '--nologo', `-env:UserInstallation=${pathToFileURL(dir).href}`, '--terminate_after_init'], { timeoutMs: limits.deadlines.office });
+    await fsp.mkdir(dir, { recursive: true });
+    await ctx.run('soffice', ['--headless', '--norestore', '--nologo', `-env:UserInstallation=${pathToFileURL(dir).href}`, '--terminate_after_init'], { timeoutMs: limits.deadlines.office, write: [dir] });
     if (fs.existsSync(path.join(dir, 'user'))) await fsp.writeFile(path.join(dir, READY_MARKER), new Date().toISOString());
   }
 
   /**
-   * Runs `convert(profileUrl)` with exclusive use of a healthy profile. `convert` returns whether
+   * Runs `convert(profileUrl, profileDir)` with exclusive use of a healthy profile. `convert` returns whether
    * LibreOffice produced its file; if not, the profile is rebuilt once and the conversion retried.
    */
   withProfile(ctx, convert) {
@@ -59,10 +62,10 @@ class OfficeProfileManager {
       const dir = this.profileDirFor(ctx.toolPath('soffice'));
       const url = pathToFileURL(dir).href;
       if (!OfficeProfileManager.healthy(dir)) await this.initialise(ctx, dir);
-      if (await convert(url)) return;
+      if (await convert(url, dir)) return;
       ctx.throwIfCancelled();
       await this.initialise(ctx, dir); // one retry on a freshly built profile
-      await convert(url);
+      await convert(url, dir);
     });
     this.lock = turn.catch(() => {});
     return turn;

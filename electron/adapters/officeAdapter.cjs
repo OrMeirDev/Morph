@@ -31,11 +31,11 @@ async function run(ctx) {
   const outDir = ctx.workspace.file('out');
   await fsp.mkdir(outDir);
   const produced = path.join(outDir, `in.${job.target}`);
-  await ctx.officeProfiles.withProfile(ctx, async (profileUrl) => {
+  await ctx.officeProfiles.withProfile(ctx, async (profileUrl, profileDir) => {
     const args = ['--headless', '--norestore', '--nologo', `-env:UserInstallation=${profileUrl}`];
     if (job.ext === 'pdf') args.push('--infilter=writer_pdf_import');
     args.push('--convert-to', filter, '--outdir', outDir, src);
-    await ctx.run('soffice', args, { timeoutMs: limits.deadlines.office });
+    await ctx.run('soffice', args, { timeoutMs: limits.deadlines.office, write: [profileDir] });
     return fs.existsSync(produced);
   });
   if (!fs.existsSync(produced)) throw new Error('LibreOffice did not produce a file');

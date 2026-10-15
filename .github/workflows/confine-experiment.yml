@@ -3,7 +3,6 @@
 name: Confinement experiment (temporary)
 
 on:
-  pull_request:
   workflow_dispatch:
 
 permissions:

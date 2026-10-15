@@ -26,6 +26,23 @@ test('friendlyError maps engine messages to Hebrew', () => {
   assert.match(friendlyError('missing-tool:ffmpeg'), /כלי ההמרה חסר/);
   assert.match(friendlyError('moov atom not found'), /פגום/);
   assert.equal(friendlyError('weird'), 'ההמרה נכשלה');
+  assert.match(friendlyError('limit-memory:soffice'), /מגבלת הזיכרון/);
+  assert.match(friendlyError('limit-processes:calibre'), /תהליכים/);
+  assert.match(friendlyError('confinement-failed:ffmpeg:CreateAppContainerProfile failed'), /בבידוד/);
+  assert.match(friendlyError('confinement-unavailable:ffmpeg:morph-confine.exe not found'), /בבידוד/);
+});
+
+test('the engine-isolation line is never silent about a missing protection', async () => {
+  const { confinementText } = await import('../../src/features/tools/toolPresentation.js');
+  assert.equal(confinementText(null), null);
+  const all = confinementText({ mode: 'enforced', tools: { ffmpeg: 'appcontainer', soffice: 'appcontainer' } });
+  assert.equal(all.ok, true);
+  assert.doesNotMatch(all.text, /מוגבלים רק/);
+  const partial = confinementText({ mode: 'enforced', tools: { ffmpeg: 'appcontainer', calibre: 'job' } });
+  assert.match(partial.text, /Calibre מוגבלים רק בזמן ובזיכרון/);
+  assert.equal(confinementText({ mode: 'unavailable', reason: 'morph-confine.exe not found' }).ok, false);
+  assert.match(confinementText({ mode: 'unavailable', reason: 'morph-confine.exe not found' }).text, /חסומים: morph-confine\.exe not found/);
+  assert.match(confinementText({ mode: 'disabled' }).text, /כבוי/);
 });
 
 test('every known per-direction limit in the registry has a Hebrew note for the row', async () => {

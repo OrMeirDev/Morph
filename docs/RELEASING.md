@@ -3,17 +3,24 @@
 A release is a tested commit, the pinned and verified engine payload, a signed installer and
 published provenance. Nothing here publishes on its own; every step names who does it.
 
-## 1. Required checks on `main` (owner, once)
+## 1. Required checks on `main` (owner, once) — PENDING
 
-Checked on 2026-10-14: `main` has **no branch protection and no rulesets**. Settings → Rules →
-Rulesets → New branch ruleset, target `main` (default branch), enable:
+Checked again on 2026-10-15: `main` has **no rulesets and no rules in effect** (`GET /repos/OrMeirDev/Morph/rulesets`
+and `/rules/branches/main` both empty), so there is no stronger rule to preserve. Creating the
+ruleset from this session was attempted and refused: the session's GitHub access does not include
+repository administration ("Write access to this GitHub API path is not permitted"). The ruleset is
+ready as `.github/rulesets/main.json`:
 
-- Require a pull request before merging.
-- Require status checks to pass, with these exact check names (from `.github/workflows/ci.yml`):
-  - `Checks and engine matrix (Linux)`
-  - `Checks (Windows, no bundled engines)`
-  - `Bundled engines, packaged app and installer (Windows)`
-- Block force pushes.
+- require a pull request (0 approvals, so the owner can merge their own PRs);
+- block force pushes (`non_fast_forward`);
+- require these exact checks, reported by GitHub Actions (app id 15368):
+  `Checks and engine matrix (Linux)`, `Checks (Windows, no bundled engines)`,
+  `Bundled engines, packaged app and installer (Windows)`.
+
+Owner, either: Settings → Rules → Rulesets → New ruleset → **Import a ruleset** →
+`.github/rulesets/main.json` → Create; or, with an admin token,
+`gh api -X POST repos/OrMeirDev/Morph/rulesets --input .github/rulesets/main.json`.
+Check afterwards: `gh api repos/OrMeirDev/Morph/rules/branches/main` lists the three rules.
 
 ## 2. Engines: pinned, tested, recorded (developer + CI)
 
@@ -47,21 +54,37 @@ Bump `version` in `package.json`; release notes list user-visible changes and th
 
 ## 5. Signing (owner: certificate; developer: configuration) — PENDING
 
-Missing inputs, none of which exist in the repository today:
+Ready without credentials (done in the repository):
 
-1. A Windows code-signing certificate (OV or EV) as a `.pfx` and its password, **or** an Azure
-   Trusted Signing account (endpoint, account name, certificate profile) with a service principal.
-2. Repository secrets `WIN_CSC_LINK` (base64 of the .pfx or a URL) and `WIN_CSC_KEY_PASSWORD`;
-   electron-builder signs `Morph.exe` and the installer when they exist (S7).
-3. Repository variable `MORPH_PUBLISHER`: the certificate subject CN. With it, CI's
-   `e2e/signature-check.cjs` requires a Valid, timestamped signature by that subject on both files.
-4. Then add `"win": { "signtoolOptions": { "publisherName": "<same CN>" } }` to the electron-builder
-   config, so `app-update.yml` carries the publisher and electron-updater refuses updates signed by
-   anyone else. Do not add it before the first signed release: an installed app with a
-   publisherName rejects unsigned updates.
+- What gets signed: `Morph.exe`, `resources\native\morph-confine.exe`, the installer and the
+  uninstaller. The third-party engines in `resources\bin` are **not** signed with Morph's
+  certificate (`win.signExts: ["morph-confine.exe", "!.exe"]`): LibreOffice and Calibre ship with
+  their publishers' signatures, and re-signing them would replace those and vouch for code Morph
+  did not build. CI checks the list on every build (`signed-files.txt` in the evidence: no file under
+  `resources\bin`, both Morph executables present).
+- CI passes either signing route to electron-builder when it is configured, and does nothing
+  otherwise; `e2e/signature-check.cjs` reports `pending` (never a pass) while nothing is signed.
 
-Until then CI reports `NotSigned` for both files (`signature.json` in the job's evidence), the README
-says the installer is unsigned, and no release is called signed.
+Missing inputs (owner), one route:
+
+- **A — certificate file:** a Windows code-signing certificate (OV or EV that allows file export)
+  as `.pfx` + password → repository secrets `WIN_CSC_LINK` (base64 of the .pfx) and
+  `WIN_CSC_KEY_PASSWORD`.
+- **B — Azure Trusted Signing:** an account and certificate profile, and a service principal with
+  the "Trusted Signing Certificate Profile Signer" role → secrets `AZURE_TENANT_ID`,
+  `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`; variables `AZURE_SIGNING_ENDPOINT` (e.g.
+  `https://weu.codesigning.azure.net`), `AZURE_SIGNING_ACCOUNT`, `AZURE_SIGNING_PROFILE`.
+
+For both: repository variable `MORPH_PUBLISHER` = the certificate subject CN exactly. With it, CI
+requires a Valid, timestamped signature by that subject on the installer and `Morph.exe`. Route B
+also writes the publisher into `app-update.yml`, so updates signed by anyone else are refused; for
+route A add `"win": { "signtoolOptions": { "publisherName": "<same CN>" } }` with the first signed
+release (not before: an installed app with a publisher rejects unsigned updates).
+
+Never paste a certificate, password or client secret into an issue, PR, log or document; only
+repository secrets hold them, and CI never prints them. Until a signature is verified, CI reports
+`NotSigned` (`signature.json`), the README says the installer is unsigned, and no release is called
+signed.
 
 ## 6. Package and publish (owner)
 

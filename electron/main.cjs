@@ -8,7 +8,6 @@ const { autoUpdater } = require('electron-updater');
 
 const limits = require('./domain/limits.cjs');
 const { ToolRegistry } = require('./infra/ToolRegistry.cjs');
-const { runProcess } = require('./infra/ProcessRunner.cjs');
 const { PersistentWorker, runInFreshWorker } = require('./infra/WorkerHost.cjs');
 const { SettingsRepository, HistoryRepository, JobRepository } = require('./infra/repositories.cjs');
 const { OfficeProfileManager } = require('./infra/OfficeProfileManager.cjs');
@@ -51,11 +50,7 @@ const coordinator = new ConversionCoordinator({
   journal,
   adapters,
   officeProfiles,
-  runTool: (name, args, o) => {
-    const exe = tools.path(name);
-    if (!exe) return Promise.reject(new Error(`missing-tool:${name}`));
-    return runProcess(exe, args, { tailBytes: limits.logTailBytes, maxCaptureBytes: limits.maxCapturedBytes, ...o, name });
-  },
+  runTool: (name, args, o) => tools.run(name, args, { tailBytes: limits.logTailBytes, maxCaptureBytes: limits.maxCapturedBytes, ...o }),
   runWorker: runInFreshWorker,
   emit: (update) => sendToWindow('job:update', update),
 });

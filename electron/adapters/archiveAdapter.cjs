@@ -45,7 +45,8 @@ async function verifyTree(root) {
 
 async function run(ctx) {
   const { job } = ctx;
-  const inputSize = (await fsp.stat(job.input)).size;
+  const input = await ctx.input();
+  const inputSize = (await fsp.stat(input)).size;
   const content = ctx.workspace.file('content');
   const pct = (lo, hi) => (line) => {
     const m = line.match(/(\d{1,3})%/);
@@ -53,8 +54,8 @@ async function run(ctx) {
   };
   const t = { timeoutMs: limits.deadlines.sevenzip };
 
-  await preflight(ctx, job.input, inputSize);
-  await ctx.run('sevenzip', ['x', '-y', '-bsp1', NO_PASSWORD, `-o${content}`, job.input], { ...t, onLine: pct(0, 45) });
+  await preflight(ctx, input, inputSize);
+  await ctx.run('sevenzip', ['x', '-y', '-bsp1', NO_PASSWORD, `-o${content}`, input], { ...t, onLine: pct(0, 45) });
   // .tar.gz / .tgz unpack to a single .tar first; check and open that too.
   const inner = await fsp.readdir(content);
   if (inner.length === 1 && /\.tar$/i.test(inner[0])) {
@@ -66,7 +67,7 @@ async function run(ctx) {
   await verifyTree(content);
   ctx.throwIfCancelled();
 
-  const out = ctx.stagingFile(job.target);
+  const out = ctx.workspace.file(`out.${job.target}`);
   if (job.target === 'tar.gz') {
     const tarFile = ctx.workspace.file('packed.tar');
     await ctx.run('sevenzip', ['a', '-ttar', '-bsp1', tarFile, '*'], { ...t, cwd: content, onLine: pct(45, 80) });

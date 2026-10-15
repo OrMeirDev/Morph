@@ -1,8 +1,9 @@
 import React from 'react';
 import { Check, X } from 'lucide-react';
-import { TOOL_NAMES } from './toolPresentation.js';
+import { TOOL_NAMES, confinementText } from './toolPresentation.js';
 
 export default function ToolHealthPanel({ tools }) {
+  const isolation = confinementText(tools?.confinement);
   return (
     <div className="setting">
       <div>
@@ -14,6 +15,7 @@ export default function ToolHealthPanel({ tools }) {
             </span>
           ))}
         </div>
+        {isolation && <div className={isolation.ok ? 'muted' : 'warn-text'}>{isolation.text}</div>}
       </div>
     </div>
   );

@@ -7,7 +7,10 @@
 //   3. off Windows only: the same tool on PATH (development on Linux/macOS)
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { runProcess } = require('./ProcessRunner.cjs');
+const { createWorkspace } = require('./JobWorkspace.cjs');
+const { Confinement } = require('./Confinement.cjs');
 const limits = require('../domain/limits.cjs');
 
 const IS_WIN = process.platform === 'win32';
@@ -77,9 +80,16 @@ const PROBES = {
 };
 
 class ToolRegistry {
-  /** @param {{ probeImages?: () => Promise<{ sharp: string|null, heic: boolean }> }} [o] */
-  constructor({ probeImages } = {}) {
+  /**
+   * @param {object} [o]
+   * @param {() => Promise<{ sharp: string|null, heic: boolean }>} [o.probeImages]
+   * @param {Confinement} [o.confinement] how engines are confined (default: from the environment)
+   * @param {string} [o.workspaceRoot] where probe workspaces go (default: JobWorkspace's)
+   */
+  constructor({ probeImages, confinement, workspaceRoot } = {}) {
     this.probeImages = probeImages;
+    this.confinement = confinement || new Confinement({ ownedRoots: binRoots() });
+    this.workspaceRoot = workspaceRoot;
     this.tools = {}; // name -> { path, ok, version, reason }
     this.images = { ok: false, heic: false, reason: 'not-probed' };
     this.ready = null;
@@ -90,17 +100,44 @@ class ToolRegistry {
     return t && t.ok ? t.path : null;
   }
 
+  /**
+   * Runs an approved tool by name, confined as Confinement decides (every engine call goes here).
+   * @param {string} name
+   * @param {string[]} args
+   * @param {object} o runProcess options plus { workspace, write } for the confinement
+   */
+  run(name, args, o = {}) {
+    const exe = this.path(name);
+    if (!exe) return Promise.reject(new Error(`missing-tool:${name}`));
+    return this.runAt(name, exe, args, o);
+  }
+
+  runAt(name, exe, args, { workspace, write, ...o } = {}) {
+    let launch;
+    try {
+      launch = this.confinement.prepare(name, exe, args, { workspace, cwd: o.cwd, write });
+    } catch (e) {
+      return Promise.reject(e);
+    }
+    return runProcess(exe, args, { ...o, name, launch });
+  }
+
   probe() {
     if (this.ready) return this.ready;
-    const run = (exe, args, o = {}) => runProcess(exe, args, { timeoutMs: limits.deadlines.probe, name: path.basename(exe), ...o });
     const tasks = Object.keys(TOOLS).map(async (name) => {
       const exe = resolveTool(name);
       if (!exe) { this.tools[name] = { path: null, ok: false, reason: 'missing' }; return; }
+      // Probes run exactly as conversions do (confined, in a scratch workspace): an engine that
+      // cannot run confined is reported unavailable with the reason, never used unconfined.
+      const ws = await createWorkspace(`probe-${name}-${crypto.randomUUID().slice(0, 8)}`, this.workspaceRoot ? { root: this.workspaceRoot } : undefined);
+      const run = (x, args, o = {}) => this.runAt(name, x, args, { timeoutMs: limits.deadlines.probe, workspace: ws.dir, ...o });
       try {
         const info = await PROBES[name](exe, run);
         this.tools[name] = { path: exe, ok: true, ...info };
       } catch (e) {
         this.tools[name] = { path: exe, ok: false, reason: String(e.message || e).slice(0, 200) };
+      } finally {
+        await ws.cleanup();
       }
     });
     if (this.probeImages) {
@@ -136,10 +173,11 @@ class ToolRegistry {
       libreoffice: ok('soffice'),
       calibre: ok('calibre'),
       sevenzip: ok('sevenzip'),
+      confinement: this.confinement.status(),
       details: Object.fromEntries([...Object.entries(this.tools).map(([k, v]) => [k, { ok: v.ok, version: v.version || null, reason: v.reason || null }]),
         ['images', { ok: this.images.ok, version: this.images.version || null, heic: this.images.heic, reason: this.images.reason || null }]]),
     };
   }
 }
 
-module.exports = { ToolRegistry, resolveTool, TOOLS };
+module.exports = { ToolRegistry, resolveTool, binRoots, TOOLS };
