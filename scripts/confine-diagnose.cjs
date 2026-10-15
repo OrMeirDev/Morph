@@ -27,7 +27,8 @@ const BASH = 'C:\\Program Files\\Git\\bin\\bash.exe';
 function run(name, { tools = policy.tools, tool, exe, args, env = {}, read = [], shipped = true, input = null, expect = null, flags = [], viaBash = false, timeoutMs = 120000 }) {
   const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'morph-diag-'));
   const c = new Confinement({ ownedRoots: [...binRoots(), codeRoot()], tools });
-  const launch = c.prepare(tool, exe, args, { workspace: ws, read });
+  // args may depend on the workspace (a real conversion writes its output there).
+  const launch = c.prepare(tool, exe, typeof args === 'function' ? args(ws) : args, { workspace: ws, read });
   if (flags.length) launch.args.splice(launch.args.indexOf('--'), 0, ...flags);
   const t0 = Date.now();
   // viaBash: the same call started through Git Bash (whose runtime gives descendants a console of
@@ -52,6 +53,10 @@ const cases = [
   ['7-Zip banner', engine('sevenzip', '7zip/7z.exe', [])],
   ['soffice --version', engine('soffice', 'libreoffice/program/soffice.com', ['--headless', '--version'])],
   ['ebook-convert --version', engine('calibre', 'calibre/ebook-convert.exe', ['--version'])],
+  // A real conversion too: Calibre starts a worker and talks to it over a pipe, which --version
+  // never does (WinError 5 in the packaged app while --version passed, run 38734059687).
+  ['ebook-convert EPUB -> MOBI', { ...engine('calibre', 'calibre/ebook-convert.exe', []),
+    args: (ws) => [path.join(ROOT, 'test', 'corpus', 'gutenberg-11-alice.epub'), path.join(ws, 'out.mobi')] }],
 ];
 for (const [name, c] of cases) {
   if (!fs.existsSync(c.exe)) continue;

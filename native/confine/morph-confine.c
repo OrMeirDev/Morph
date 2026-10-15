@@ -293,9 +293,14 @@ static HANDLE lowToken(PSID restrictTo, int keepAdmins) {
     return NULL;
   }
   CloseHandle(self);
-  if (restrictTo) {
-    // Objects the engine creates itself (pipes, events, files) get this default DACL; it must name
-    // a restricting SID too, or the engine could not write to its own objects.
+  {
+    // Objects the engine creates itself (its pipes, events, sections, console) get this default
+    // DACL. The caller's default DACL is not enough: for an elevated administrator it grants only
+    // Administrators and SYSTEM, and Administrators is deny-only here, so the engine could not
+    // open its own objects (measured: a new console could not start, 0xC0000142; Calibre's pipe
+    // to its worker refused, WinError 5; under Git Bash, whose runtime adds the user to the
+    // default DACL, both worked). So: the user and SYSTEM, plus the restricting SIDs when
+    // write-restricted (writes must also pass for one of them).
     BYTE system[SECURITY_MAX_SID_SIZE];
     DWORD n4 = sizeof system;
     CreateWellKnownSid(WinLocalSystemSid, NULL, system, &n4);
@@ -308,11 +313,12 @@ static HANDLE lowToken(PSID restrictTo, int keepAdmins) {
     }
     PSID user = ((TOKEN_USER *)userBuf)->User.Sid;
     PSID who[4] = { user, (PSID)system, restrictTo, (PSID)restrictedSid };
+    int nWho = restrictTo ? 4 : 2;
     DWORD size = sizeof(ACL);
-    for (int i = 0; i < 4; i++) size += sizeof(ACCESS_ALLOWED_ACE) + GetLengthSid(who[i]);
+    for (int i = 0; i < nWho; i++) size += sizeof(ACCESS_ALLOWED_ACE) + GetLengthSid(who[i]);
     PACL dacl = (PACL)LocalAlloc(LPTR, size);
     BOOL ok = dacl && InitializeAcl(dacl, size, ACL_REVISION);
-    for (int i = 0; ok && i < 4; i++) ok = AddAccessAllowedAce(dacl, ACL_REVISION, GENERIC_ALL, who[i]);
+    for (int i = 0; ok && i < nWho; i++) ok = AddAccessAllowedAce(dacl, ACL_REVISION, GENERIC_ALL, who[i]);
     TOKEN_DEFAULT_DACL dd = { dacl };
     if (!ok || !SetTokenInformation(restricted, TokenDefaultDacl, &dd, sizeof dd)) {
       setError("SetTokenInformation(default DACL)", GetLastError());
