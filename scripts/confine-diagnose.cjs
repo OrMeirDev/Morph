@@ -93,6 +93,12 @@ for (const [name, c, expect] of variantCases) {
   }
 }
 fs.rmSync(canary, { force: true });
+// LibreOffice in an AppContainer (no network at all), re-measured after the start-up fixes above:
+// its first profile start never returned there (run 38680593398).
+{
+  const [name, c] = variantCases[2];
+  if (fs.existsSync(c.exe)) run(`variant: ${name} (AppContainer)`, { ...c, tools: { ...policy.tools, soffice: { isolation: 'appcontainer' } }, shipped: false, timeoutMs: 120000 });
+}
 const rt = workerRuntime();
 if (rt) {
   run('image worker runtime: Electron as node in the AppContainer', { tool: 'imageworker', exe: rt.exe, args: [...(rt.args || []), '-e', 'console.log("node " + process.version)'], env: rt.env, read: workerReadRoots(rt) });
