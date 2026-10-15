@@ -379,14 +379,11 @@ static DWORD activeProcesses(HANDLE job) {
 }
 
 // Low-integrity engines get a window station and desktop of their own, as Chromium's sandbox gives
-// its restricted processes. Measured: on a service's window station (a CI runner step run from
-// PowerShell, Morph started from there too) the restricted Low token may not use the caller's
-// desktop, user32 fails to initialise and LibreOffice and Calibre exit with 0xC0000142 before
-// running any code. (Started under Git Bash they worked: its runtime puts descendants on a window
-// station of its own.) Only this user (not Administrators, which is deny-only in the token), the
-// restricted-code SID and SYSTEM may use them, and they are labelled Low so the engine may write
-// to them. A desktop of its own also keeps the engine away from the user's windows. The handles
-// stay open until this process exits; the engine's processes hold their own.
+// its restricted processes, so they cannot reach the user's windows, and only this user (not
+// Administrators, which is deny-only in the token), the restricted-code SID and SYSTEM may use
+// them; labelled Low so the engine may write to them. (Added while chasing 0xC0000142 at start-up:
+// that turned out to be the console, see --console in confinementPolicy.cjs; the engines start on
+// this desktop, run 38733280447.) The handles stay open until this process exits.
 static HWINSTA gWinsta;
 static HDESK gDesktop;
 static int privateDesktop(HANDLE token, wchar_t *name, size_t cap) {

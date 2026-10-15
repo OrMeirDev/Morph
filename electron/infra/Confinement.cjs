@@ -159,6 +159,7 @@ class Confinement {
     } else if (t.isolation === 'low-integrity') {
       h.push('--low-integrity');
       if (t.restrictWrites) h.push('--restrict-writes', jobName('Morph.Writes', workspace));
+      if (t.console) h.push('--console', t.console);
       for (const w of [workspace, ...write]) h.push('--write', w);
     }
     if (lim.jobMemoryMb) h.push('--job-memory', String(lim.jobMemoryMb));

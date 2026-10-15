@@ -6,6 +6,13 @@
 // isolation:
 //   'appcontainer'   no network, reads only its own folder, writes only the job workspace
 //   'low-integrity'  writes only where Morph labelled Low; reads and network NOT restricted
+// console (low-integrity only): 'inherit' = the engine shares the helper's hidden console. Measured
+//   in run 38733280447 (scripts/confine-diagnose.cjs matrix, started from PowerShell as Morph is
+//   from Explorer): with a new console of its own, the restricted Low token (Administrators
+//   deny-only) cannot start the console host, and LibreOffice, Calibre and even cmd.exe exit with
+//   0xC0000142 before running; with the helper's console all three start, Administrators still
+//   deny-only. Without a console LibreOffice fails the same way. (Under Git Bash, where the tests
+//   run, a new console works, which is why only the packaged app and the diagnostics showed it.)
 // Every engine also runs in a Job Object (kill-on-close, parent watch, the limits below).
 const tools = {
   ffmpeg: { isolation: 'appcontainer' },
@@ -16,11 +23,11 @@ const tools = {
   pdfinfo: { isolation: 'appcontainer' },
   soffice: {
     isolation: 'low-integrity',
-    // Write restriction to the job's own SID is measured by isolation.test but not shipped: in
-    // CI diagnostics a write-restricted Calibre hung and Low-IL starts failed outside the test
-    // path (runs 38713426740, 38714316057). Until it converts there, Low-IL engines can write into
-    // other Low-labelled folders (e.g. LocalLow).
+    // Write restriction to the job's own SID is measured by isolation.test but not shipped: it did
+    // not start LibreOffice or Calibre (runs 38713426740, 38714316057, before console: 'inherit').
+    // Until it converts, Low-IL engines can write into other Low-labelled folders (e.g. LocalLow).
     restrictWrites: false,
+    console: 'inherit',
     reason: 'LibreOffice 26.2.6.3 in an AppContainer: --version works, but the first start of a profile never returns (killed after 300 s, run 38680593398); it needs named pipes and objects an AppContainer does not give it.',
   },
   // The per-job image worker (sharp/libvips, heic-convert, pdf-lib, imagetracerjs) as Electron in
@@ -29,6 +36,7 @@ const tools = {
   calibre: {
     isolation: 'low-integrity',
     restrictWrites: false, // as above
+    console: 'inherit',
     reason: 'Calibre 9.15.0 in an AppContainer stops at once: "RuntimeError: NUL file missing in windows" (calibre/utils/ipc/launch.py checks os.devnull, which an AppContainer cannot open; run 38680593398).',
   },
 };
