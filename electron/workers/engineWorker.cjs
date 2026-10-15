@@ -25,17 +25,21 @@ async function handle(msg) {
   }
 }
 
+let pending = 0;
+let inputClosed = false;
+const exitIfDone = () => { if (inputClosed && pending === 0) process.exit(0); };
 const onMessage = (msg) => {
   if (!msg || typeof msg !== 'object') return;
   if (msg.type === 'shutdown') { process.exit(0); return; } // orderly end after the last reply
+  pending++;
   handle(msg).then(
     (result) => send({ id: msg.id, ok: true, result }),
     (e) => send({ id: msg.id, ok: false, error: String(e?.message || e).slice(0, 300) }),
-  );
+  ).finally(() => { pending--; exitIfDone(); });
 };
 
 if (stdio) {
   require('readline').createInterface({ input: process.stdin }).on('line', (line) => { try { onMessage(JSON.parse(line)); } catch { /* not a request */ } })
-    .on('close', () => process.exit(0)); // the parent went away
+    .on('close', () => { inputClosed = true; exitIfDone(); }); // input ended: finish what was asked, then exit
 } else if (port) port.on('message', (e) => onMessage(e.data));
 else process.on('message', onMessage);

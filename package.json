@@ -10,7 +10,7 @@
     "dev": "concurrently -k \"vite\" \"wait-on tcp:5174 && cross-env VITE_DEV=1 electron .\"",
     "build": "vite build",
     "start": "electron .",
-    "test": "node --test --test-reporter=spec \"test/**/*.test.mjs\" \"test/**/*.test.cjs\"",
+    "test": "node --test --test-concurrency=1 --test-reporter=spec \"test/**/*.test.mjs\" \"test/**/*.test.cjs\"",
     "check:imports": "node scripts/check-imports.cjs",
     "check": "npm run check:imports && npm test && npm run build",
     "dist": "node scripts/bin-manifest.cjs verify && node native/confine/build.cjs && vite build && electron-builder --win nsis --x64",

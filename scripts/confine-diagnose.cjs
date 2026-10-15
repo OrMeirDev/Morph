@@ -23,16 +23,16 @@ const outFile = (() => { const i = process.argv.indexOf('--out'); return i > 0 ?
 if (process.platform !== 'win32' || !fs.existsSync(HELPER)) { console.log('needs Windows and native/out/morph-confine.exe'); process.exit(0); }
 
 const results = [];
-function run(name, { tools = policy.tools, tool, exe, args, env = {}, read = [], shipped = true }) {
+function run(name, { tools = policy.tools, tool, exe, args, env = {}, read = [], shipped = true, input = null, expect = null }) {
   const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'morph-diag-'));
   const c = new Confinement({ ownedRoots: [...binRoots(), codeRoot()], tools });
   const launch = c.prepare(tool, exe, args, { workspace: ws, read });
   const t0 = Date.now();
-  const r = spawnSync(launch.exe, launch.args, { cwd: launch.cwd, env: { ...launch.env, ...env }, encoding: 'utf8', timeout: 120000, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  const r = spawnSync(launch.exe, launch.args, { cwd: launch.cwd, env: { ...launch.env, ...env }, encoding: 'utf8', timeout: 120000, windowsHide: true, stdio: [input ? 'pipe' : 'ignore', 'pipe', 'pipe'], input: input || undefined });
   const s = launch.readStats();
   const container = launch.args[launch.args.indexOf('--appcontainer') + 1];
   if (launch.args.includes('--appcontainer') && !s?.profileDeleted) spawnSync(HELPER, ['--delete-profile', container], { stdio: 'ignore' });
-  const ok = r.status === 0 && s?.outcome === 'exited';
+  const ok = r.status === 0 && s?.outcome === 'exited' && (!expect || expect.test(r.stdout || ''));
   const res = { name, shipped, ok, status: r.status, ms: Date.now() - t0, timedOut: !!r.error, stats: s, stdout: (r.stdout || '').trim().slice(-300), stderr: (r.stderr || '').trim().slice(-600) };
   console.log(`${ok ? 'OK  ' : 'FAIL'}${shipped ? '' : ' (not shipped)'} ${name}: status=${r.status} outcome=${s?.outcome} ${s?.error ? `error=${s.error} ` : ''}${!ok && res.stderr ? `stderr=${res.stderr.replace(/\s+/g, ' ').slice(0, 300)}` : ''}`);
   // A timed-out engine may still be dying (kill-on-close): retry, and never let cleanup end the run.
@@ -60,6 +60,10 @@ for (const [name, c] of cases) {
 const rt = workerRuntime();
 if (rt) {
   run('image worker runtime: Electron as node in the AppContainer', { tool: 'imageworker', exe: rt.exe, args: [...(rt.args || []), '-e', 'console.log("node " + process.version)'], env: rt.env, read: workerReadRoots(rt) });
+  // The real worker script answering a probe (loads sharp in the container), as the app runs it.
+  const worker = path.join(ROOT, 'electron', 'workers', 'engineWorker.cjs');
+  run('image worker: probe request through the real worker (sharp loads in the AppContainer)', { tool: 'imageworker', exe: rt.exe, args: [...(rt.args || []), worker],
+    env: { ...rt.env, MORPH_WORKER_STDIO: '1' }, read: workerReadRoots(rt), input: `${JSON.stringify({ id: 1, type: 'probe' })}\n`, expect: /"ok":true[^\n]*"sharp":"\d/ });
 }
 const left = spawnSync(HELPER, ['--list-profiles', 'Morph.Job.'], { encoding: 'utf8' }).stdout.trim();
 console.log(`job profiles left by the runs above: ${left ? left.split(/\r?\n/).length : 0}`);

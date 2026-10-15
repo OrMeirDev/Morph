@@ -148,7 +148,7 @@ jobs:
       - name: Confinement on real Windows (D2) before the rest (fail fast; also part of npm test below)
         timeout-minutes: 45
         shell: bash
-        run: node --test --test-reporter=spec test/windows/confinement.test.cjs test/windows/isolation.test.cjs 2>&1 | tee confinement.log; test ${PIPESTATUS[0]} -eq 0
+        run: node --test --test-concurrency=1 --test-reporter=spec test/windows/confinement.test.cjs test/windows/isolation.test.cjs 2>&1 | tee confinement.log; test ${PIPESTATUS[0]} -eq 0
       - name: Tests with the bundled engines (nothing may skip)
         timeout-minutes: 75
         shell: bash

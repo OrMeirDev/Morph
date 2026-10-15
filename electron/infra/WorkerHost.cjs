@@ -29,7 +29,10 @@ function workerRuntime() {
   // An AppContainer cannot open the NUL device, and Electron aborts at start-up when it cannot set
   // up stdio from it ("Unable to open nul device ... try starting with --no-stdio-init", measured
   // in run 38713426740). The worker's stdio are the helper's pipes, so NUL is not needed.
-  const args = ['--no-stdio-init'];
+  // Node's module loader resolves real paths by lstat-ing every component, drive root included,
+  // which an AppContainer may not do ("EPERM: lstat 'D:\\'", run 38719245581); preserving
+  // symlinks skips that resolution (Morph's code and node_modules contain no symlinks).
+  const args = ['--no-stdio-init', '--preserve-symlinks', '--preserve-symlinks-main'];
   if (process.versions.electron) return { exe: process.execPath, args, env };
   try {
     const exe = require('electron'); // under plain Node this is the path of the Electron binary
