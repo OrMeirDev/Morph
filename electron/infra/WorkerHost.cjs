@@ -67,7 +67,10 @@ function spawnConfinedWorker({ confinement, workspace, runtime }) {
     child.on('close', async (code) => {
       const stats = launch.readStats();
       if (launch.cleanup) await launch.cleanup(stats);
-      resolve({ code, stats, stderr: stderr.trim().split(/\r?\n/).pop()?.slice(0, 200) || '' });
+      // The line that names the problem (a Node crash ends with the version line, which says nothing).
+      const lines = stderr.trim().split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+      const telling = lines.find((l) => /(Error|error:|EACCES|EPERM|ENOENT|Cannot|denied|FATAL)/.test(l)) || lines.pop() || '';
+      resolve({ code, stats, stderr: telling.slice(0, 300) });
     });
     child.on('error', (e) => resolve({ code: null, stats: null, stderr: `spawn-failed:${e.code || e.message}` }));
   });

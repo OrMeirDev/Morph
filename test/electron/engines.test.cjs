@@ -21,8 +21,9 @@ test('tool probes ran', async () => {
   assert.equal(s.images, true, 'sharp loads in the worker');
 });
 
-test('MOR-01: an image cancelled at once ends cancelled and writes nothing', async () => {
+test('MOR-01: an image cancelled at once ends cancelled and writes nothing', { timeout: 120000 }, async () => {
   await tools.probe();
+  assert.ok(has('images'), `image conversion available: ${tools.images.reason}`);
   const d = dirOf('cancel');
   const file = await makePng(path.join(d, 'tiny.png'));
   const [det] = await intake.detectPaths([file]);
@@ -33,15 +34,20 @@ test('MOR-01: an image cancelled at once ends cancelled and writes nothing', asy
   assert.deepEqual(fs.readdirSync(d), ['tiny.png']);
 });
 
-test('MOR-01: cancelling during native image work kills the worker; no output, next job fine', async () => {
+test('MOR-01: cancelling during native image work kills the worker; no output, next job fine', { timeout: 180000 }, async () => {
   await tools.probe();
+  assert.ok(has('images'), `image conversion available: ${tools.images.reason}`);
   const d = dirOf('cancel2');
   const big = await makePng(path.join(d, 'big.png'), { width: 3000, height: 3000 });
   const small = await makePng(path.join(d, 'small.png'));
   const [a, b] = await intake.detectPaths([big, small]);
   coordinator.enqueue({ fileId: a.id, target: 'svg' }); // tracing a large image takes a while
   coordinator.enqueue({ fileId: b.id, target: 'jpg' });
-  while (lastUpdate(a.id)?.state !== 'converting') await new Promise((r) => setTimeout(r, 10));
+  const t0 = Date.now();
+  while (lastUpdate(a.id)?.state !== 'converting') {
+    assert.ok(Date.now() - t0 < 60000, `the big image started converting (state ${lastUpdate(a.id)?.state}: ${lastUpdate(a.id)?.error})`);
+    await new Promise((r) => setTimeout(r, 10));
+  }
   await new Promise((r) => setTimeout(r, 150));
   coordinator.cancel(a.id);
   await coordinator.whenIdle();
