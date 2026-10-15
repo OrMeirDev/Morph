@@ -112,7 +112,7 @@ Every call (`ToolRegistry.run` / the image worker → `infra/Confinement.cjs` �
 | Tier | Runs | Files | Network |
 | --- | --- | --- | --- |
 | AppContainer, no capabilities, one identity **per job** | ffmpeg, ffprobe, 7-Zip, Poppler, the image worker (sharp/libvips, heic-convert, pdf-lib, imagetracerjs as Electron in node mode) | read: Morph's own folders through one capability (`morph.engines.read`: `bin\`, Morph's code and runtime); write: only that job's workspace (granted to the job's own AppContainer SID). Enforced through NTFS ACLs, so **not on FAT32/exFAT** | none; loopback included |
-| Low integrity (restricted token: privileges dropped, Administrators deny-only) | LibreOffice, Calibre | write: refused to anything labelled Medium (normal user files) — allowed in the job workspace and the LibreOffice profile (labelled Low) **and in any other Low-labelled folder** (measured: Calibre wrote into `%USERPROFILE%\AppData\LocalLow`); read: **anything the user can read** | **not restricted** |
+| Low integrity (restricted token: privileges dropped, Administrators deny-only; a private window station and desktop; the helper's hidden console) | LibreOffice, Calibre | write: refused to anything labelled Medium (normal user files) — allowed in the job workspace and the LibreOffice profile (labelled Low) **and in any other Low-labelled folder** (measured: Calibre wrote into `%USERPROFILE%\AppData\LocalLow`); read: **anything the user can read** | **not restricted** |
 
 Measured for the AppContainer tier: a canary outside the workspace is not overwritten; reading an
 original outside the workspace fails; code in the image worker's container gets EPERM reading or
@@ -137,6 +137,15 @@ Why LibreOffice and Calibre are not in the AppContainer (measured): LibreOffice'
 start never returns there; Calibre (and Electron without `--no-stdio-init`) aborts because the
 NUL device cannot be opened. A write-restricted token per job (so they could not write into other
 Low folders) was measured too: neither starts with it, so it is not shipped.
+
+Starting the Low tier (measured, run 38733280447): with a console of its own, the restricted
+token cannot start the console host, and LibreOffice, Calibre and even `cmd.exe` exit with
+0xC0000142 before running any code; sharing the helper's hidden console fixes it with
+Administrators still deny-only. Under Git Bash (where the test steps run) a new console works, so
+only the packaged app and the diagnostics, both started from PowerShell, showed it; the
+diagnostics now cover that context and fail the build if the Low tier does not start there. The
+private window station and desktop keep the engines away from the user's windows; they were not
+the cause.
 
 Modes, shown on the settings page and in `tools:status`: `enforced`; `unavailable` (helper missing
 → engines refused, never run unconfined); `disabled` (`MORPH_CONFINEMENT=off`, diagnostics);
