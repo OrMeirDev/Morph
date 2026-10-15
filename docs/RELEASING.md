@@ -56,12 +56,18 @@ Bump `version` in `package.json`; release notes list user-visible changes and th
 
 Ready without credentials (done in the repository):
 
-- What gets signed: `Morph.exe`, `resources\native\morph-confine.exe`, the installer and the
-  uninstaller. The third-party engines in `resources\bin` are **not** signed with Morph's
-  certificate (`win.signExts: ["morph-confine.exe", "!.exe"]`): LibreOffice and Calibre ship with
+- What gets signed: `Morph.exe`, `resources\native\morph-confine.exe`, the installer, the
+  uninstaller and electron-builder's `elevate.exe` (inside the installer). The third-party engines
+  in `resources\bin` are **not** signed with Morph's certificate: LibreOffice and Calibre ship with
   their publishers' signatures, and re-signing them would replace those and vouch for code Morph
-  did not build. CI checks the list on every build (`signed-files.txt` in the evidence: no file under
-  `resources\bin`, both Morph executables present).
+  did not build. They are copied by the `afterPack` hook (`scripts/after-pack.cjs`), outside
+  electron-builder's signing pipeline, not through `extraResources`. (`win.signExts` cannot do this:
+  it matches file-name suffixes for Morph's own files and the engines alike; the earlier
+  `["morph-confine.exe", "!.exe"]` silently excluded `Morph.exe`, the installer and the
+  uninstaller, and a single-file `extraResources` entry is never sent for signing at all. CI caught
+  both.) CI checks the list on every build (`signed-files.txt` in the evidence: no file under
+  `resources\bin`; `Morph.exe`, `morph-confine.exe`, the installer and the uninstaller present;
+  "skipped via signExts" lines do not count as sent).
 - CI passes either signing route to electron-builder when it is configured, and does nothing
   otherwise; `e2e/signature-check.cjs` reports `pending` (never a pass) while nothing is signed.
 

@@ -183,12 +183,19 @@ jobs:
       - name: Only Morph's own executables are sent for signing (never the third-party engines)
         shell: bash
         run: |
-          # electron-builder logs every file it would sign; with no certificate it says "skipped".
-          grep -iE "sign" build.log | grep -oE '(path|file)=[^ ]+' | sed -E 's/^(path|file)=//' | sort -u | tee signed-files.txt
+          # electron-builder logs each file it sends to signing: "no code signing certificate configured,
+          # signing is skipped" without a certificate, "signing with signtool.exe" / "signing with Azure
+          # Trusted Signing" with one. "file signing skipped via signExts configuration" means it would
+          # NOT be signed even with a certificate, so those lines are excluded.
+          grep -E "no code signing certificate configured|signing with " build.log | grep -v "via signExts" \
+            | grep -oE '(path|file)=[^ ]+' | sed -E 's/^(path|file)=//' | sort -u | tee signed-files.txt
+          echo "--- excluded from signing:"; grep "via signExts" build.log || true
           ! grep -iE 'resources.bin' signed-files.txt
-          grep -qi 'resources.native.morph-confine.exe' signed-files.txt
-          grep -qi 'win-unpacked.Morph.exe' signed-files.txt
+          for f in 'resources.native.morph-confine.exe' 'win-unpacked.Morph.exe' 'Morph-Setup-1\.0\.4-ci\.exe$' '__uninstaller\.exe'; do
+            grep -qiE "$f" signed-files.txt || { echo "not sent for signing: $f"; exit 1; }
+          done
           test -f release/win-unpacked/resources/native/morph-confine.exe
+          test -f release/win-unpacked/resources/bin/ffmpeg/ffmpeg.exe   # engines still packaged (after-pack hook)
       - name: Code signature (required once MORPH_PUBLISHER is set; reported as pending before)
         shell: bash
         run: node e2e/signature-check.cjs release/Morph-Setup-1.0.4-ci.exe release/win-unpacked/Morph.exe ${{ vars.MORPH_PUBLISHER && format('--publisher "{0}"', vars.MORPH_PUBLISHER) || '' }} --report signature.json

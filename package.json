@@ -64,12 +64,11 @@
     ],
     "extraResources": [
       {
-        "from": "bin",
-        "to": "bin"
-      },
-      {
-        "from": "native/out/morph-confine.exe",
-        "to": "native/morph-confine.exe"
+        "from": "native/out",
+        "to": "native",
+        "filter": [
+          "morph-confine.exe"
+        ]
       },
       "THIRD_PARTY_NOTICES.md"
     ],
@@ -90,12 +89,9 @@
           ]
         }
       ],
-      "icon": "build/icon.ico",
-      "signExts": [
-        "morph-confine.exe",
-        "!.exe"
-      ]
+      "icon": "build/icon.ico"
     },
+    "afterPack": "./scripts/after-pack.cjs",
     "nsis": {
       "oneClick": false,
       "perMachine": false,
