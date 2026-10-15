@@ -26,10 +26,14 @@ const FRAME = '\u001eMORPH:'; // as in workers/engineWorker.cjs
  */
 function workerRuntime() {
   const env = { ELECTRON_RUN_AS_NODE: '1' };
-  if (process.versions.electron) return { exe: process.execPath, env };
+  // An AppContainer cannot open the NUL device, and Electron aborts at start-up when it cannot set
+  // up stdio from it ("Unable to open nul device ... try starting with --no-stdio-init", measured
+  // in run 38713426740). The worker's stdio are the helper's pipes, so NUL is not needed.
+  const args = ['--no-stdio-init'];
+  if (process.versions.electron) return { exe: process.execPath, args, env };
   try {
     const exe = require('electron'); // under plain Node this is the path of the Electron binary
-    if (typeof exe === 'string' && fs.existsSync(exe)) return { exe, env };
+    if (typeof exe === 'string' && fs.existsSync(exe)) return { exe, args, env };
   } catch { /* not installed */ }
   return null;
 }
@@ -44,7 +48,7 @@ function workerReadRoots(runtime) {
 
 // One confined worker process through the helper. Same surface as spawnWorker().
 function spawnConfinedWorker({ confinement, workspace, runtime }) {
-  const launch = confinement.prepare('imageworker', runtime.exe, [WORKER], { workspace, read: workerReadRoots(runtime) });
+  const launch = confinement.prepare('imageworker', runtime.exe, [...(runtime.args || []), WORKER], { workspace, read: workerReadRoots(runtime) });
   // detached off Windows only: the tree is then one process group (as in ProcessRunner).
   const child = spawn(launch.exe, launch.args, { cwd: launch.cwd, env: { ...launch.env, ...runtime.env, MORPH_WORKER_STDIO: '1' }, windowsHide: true, detached: process.platform !== 'win32', stdio: ['pipe', 'pipe', 'pipe'] });
   const listeners = [];

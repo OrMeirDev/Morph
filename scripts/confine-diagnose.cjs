@@ -1,72 +1,65 @@
-// Diagnostics for D2 on Windows: runs morph-confine.exe directly with each isolation mode Morph
-// uses and prints the exit code, the helper's statistics and stderr for each. Use it when engines
-// report "unavailable" or confined runs fail; CI runs it before the tests (output in the evidence).
+// Diagnostics for D2 on Windows: runs each engine and the image worker's runtime through
+// morph-confine.exe exactly as Morph does (Confinement.prepare: same arguments, grants and
+// environment), in each isolation variant, and prints exit code, the helper's outcome and stderr.
+// Use it when engines report "unavailable" or confined runs fail.
 //   node scripts/confine-diagnose.cjs [--out confine-diagnose.json] [--strict]
-// --strict: exit 1 if any mode fails or a profile is left behind (CI: fail in minutes, not hours).
+// --strict: exit 1 if a mode the shipped policy uses fails, or a job profile is left behind.
+// Variants the policy does not use are reported for information only.
 const { spawnSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { Confinement } = require('../electron/infra/Confinement.cjs');
+const { binRoots } = require('../electron/infra/ToolRegistry.cjs');
+const { workerRuntime, workerReadRoots, codeRoot } = require('../electron/infra/WorkerHost.cjs');
+const policy = require('../electron/domain/confinementPolicy.cjs');
 
 const ROOT = path.join(__dirname, '..');
 const HELPER = path.join(ROOT, 'native', 'out', 'morph-confine.exe');
 const BIN = path.join(ROOT, 'bin');
 const outFile = (() => { const i = process.argv.indexOf('--out'); return i > 0 ? process.argv[i + 1] : null; })();
-
-function electronExe() { try { const e = require('electron'); return typeof e === 'string' && fs.existsSync(e) ? e : null; } catch { return null; } }
-
-function run(name, helperArgs, exe, args, env = {}) {
-  const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'morph-diag-'));
-  fs.mkdirSync(path.join(ws, 'tmp'));
-  const stats = path.join(os.tmpdir(), `morph-diag-${Date.now()}-${Math.random().toString(36).slice(2)}.json`);
-  const t0 = Date.now();
-  const r = spawnSync(HELPER, [...helperArgs(ws), '--write', ws, '--parent', String(process.pid), '--stats', stats, '--cwd', ws, '--', exe, ...args],
-    // Launched the way ProcessRunner launches engines (hidden, no stdin).
-    { encoding: 'utf8', timeout: 120000, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, TEMP: path.join(ws, 'tmp'), TMP: path.join(ws, 'tmp'), ...env } });
-  let s = null;
-  try { s = JSON.parse(fs.readFileSync(stats, 'utf8')); } catch { /* none */ }
-  const res = { name, status: r.status, ms: Date.now() - t0, timedOut: !!r.error && /ETIMEDOUT/.test(String(r.error)), stats: s,
-    stdout: (r.stdout || '').trim().slice(-300), stderr: (r.stderr || '').trim().slice(-600) };
-  console.log(`${r.status === 0 ? 'OK  ' : 'FAIL'} ${name}: status=${r.status} outcome=${s?.outcome} error=${s?.error || ''} ${res.stderr ? `stderr=${res.stderr.replace(/\s+/g, ' ').slice(0, 300)}` : ''}`);
-  fs.rmSync(ws, { recursive: true, force: true });
-  return res;
-}
+if (process.platform !== 'win32' || !fs.existsSync(HELPER)) { console.log('needs Windows and native/out/morph-confine.exe'); process.exit(0); }
 
 const results = [];
-if (process.platform !== 'win32' || !fs.existsSync(HELPER)) {
-  console.log('needs Windows and native/out/morph-confine.exe');
-  process.exit(0);
+function run(name, { tools = policy.tools, tool, exe, args, env = {}, read = [], shipped = true }) {
+  const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'morph-diag-'));
+  const c = new Confinement({ ownedRoots: [...binRoots(), codeRoot()], tools });
+  const launch = c.prepare(tool, exe, args, { workspace: ws, read });
+  const t0 = Date.now();
+  const r = spawnSync(launch.exe, launch.args, { cwd: launch.cwd, env: { ...launch.env, ...env }, encoding: 'utf8', timeout: 120000, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  const s = launch.readStats();
+  const container = launch.args[launch.args.indexOf('--appcontainer') + 1];
+  if (launch.args.includes('--appcontainer') && !s?.profileDeleted) spawnSync(HELPER, ['--delete-profile', container], { stdio: 'ignore' });
+  const ok = r.status === 0 && s?.outcome === 'exited';
+  const res = { name, shipped, ok, status: r.status, ms: Date.now() - t0, timedOut: !!r.error, stats: s, stdout: (r.stdout || '').trim().slice(-300), stderr: (r.stderr || '').trim().slice(-600) };
+  console.log(`${ok ? 'OK  ' : 'FAIL'}${shipped ? '' : ' (not shipped)'} ${name}: status=${r.status} outcome=${s?.outcome} ${s?.error ? `error=${s.error} ` : ''}${!ok && res.stderr ? `stderr=${res.stderr.replace(/\s+/g, ' ').slice(0, 300)}` : ''}`);
+  fs.rmSync(ws, { recursive: true, force: true });
+  results.push(res);
 }
-const ffmpeg = path.join(BIN, 'ffmpeg', 'ffmpeg.exe');
-const soffice = path.join(BIN, 'libreoffice', 'program', 'soffice.com');
-const ec = path.join(BIN, 'calibre', 'ebook-convert.exe');
-const cmd = 'C:\\Windows\\System32\\cmd.exe';
-const id = `diag${Date.now().toString(36)}`;
+
+const engine = (tool, rel, args) => ({ tool, exe: path.join(BIN, rel), args });
 const cases = [
-  ['job only, cmd /c ver', () => [], cmd, ['/d', '/c', 'ver']],
-  ['AppContainer, profile created and deleted (--ephemeral), cmd /c ver', () => ['--appcontainer', `Morph.Diag.${id}`, '--ephemeral'], cmd, ['/d', '/c', 'ver']],
-  ['AppContainer + capability, cmd /c ver', () => ['--appcontainer', `Morph.Diag.${id}b`, '--ephemeral', '--capability', 'morph.engines.read'], cmd, ['/d', '/c', 'ver']],
-  ...(fs.existsSync(ffmpeg) ? [
-    ['AppContainer, ffmpeg -version, read granted to the container', () => ['--appcontainer', `Morph.Diag.${id}c`, '--ephemeral', '--read', path.dirname(ffmpeg)], ffmpeg, ['-hide_banner', '-version']],
-    ['AppContainer + capability, ffmpeg -version, read granted to the capability', () => ['--appcontainer', `Morph.Diag.${id}d`, '--ephemeral', '--capability', 'morph.engines.read', '--read', path.dirname(ffmpeg)], ffmpeg, ['-hide_banner', '-version']],
-  ] : []),
-  ...(fs.existsSync(soffice) ? [
-    ['Low integrity, soffice --version', () => ['--low-integrity'], soffice, ['--headless', '--version']],
-    ['Low integrity + write-restricted, soffice --version', () => ['--low-integrity', '--restrict-writes', `Morph.Diag.${id}e`], soffice, ['--headless', '--version']],
-  ] : []),
-  ...(fs.existsSync(ec) ? [
-    ['Low integrity, ebook-convert --version', () => ['--low-integrity'], ec, ['--version']],
-    ['Low integrity + write-restricted, ebook-convert --version', () => ['--low-integrity', '--restrict-writes', `Morph.Diag.${id}f`], ec, ['--version']],
-  ] : []),
+  ['ffmpeg -version', engine('ffmpeg', 'ffmpeg/ffmpeg.exe', ['-hide_banner', '-version'])],
+  ['pdfinfo -v', engine('pdfinfo', 'poppler/pdfinfo.exe', ['-v'])],
+  ['7-Zip banner', engine('sevenzip', '7zip/7z.exe', [])],
+  ['soffice --version', engine('soffice', 'libreoffice/program/soffice.com', ['--headless', '--version'])],
+  ['ebook-convert --version', engine('calibre', 'calibre/ebook-convert.exe', ['--version'])],
 ];
-const electron = electronExe();
-if (electron) {
-  cases.push(['AppContainer + capability, Electron as node: console.log', () => ['--appcontainer', `Morph.Diag.${id}g`, '--ephemeral', '--capability', 'morph.engines.read', '--read', ROOT],
-    electron, ['-e', 'console.log("node " + process.version)'], { ELECTRON_RUN_AS_NODE: '1' }]);
+for (const [name, c] of cases) {
+  if (!fs.existsSync(c.exe)) continue;
+  const t = policy.tools[c.tool];
+  run(`${name} (${t.isolation}${t.restrictWrites ? ', write-restricted' : ''})`, c);
+  if (t.isolation === 'low-integrity') {
+    const flip = { ...policy.tools, [c.tool]: { ...t, restrictWrites: !t.restrictWrites } };
+    run(`${name} (low-integrity${flip[c.tool].restrictWrites ? ', write-restricted' : ''})`, { ...c, tools: flip, shipped: false });
+  }
 }
-for (const [name, h, exe, args, env] of cases) results.push(run(name, h, exe, args, env));
-const left = spawnSync(HELPER, ['--list-profiles', 'Morph.Diag.'], { encoding: 'utf8' }).stdout.trim();
-console.log(`profiles left by the runs above: ${left ? left.split(/\r?\n/).length : 0}`);
-results.push({ name: 'profiles left', left });
+const rt = workerRuntime();
+if (rt) {
+  run('image worker runtime: Electron as node in the AppContainer', { tool: 'imageworker', exe: rt.exe, args: [...(rt.args || []), '-e', 'console.log("node " + process.version)'], env: rt.env, read: workerReadRoots(rt) });
+}
+const left = spawnSync(HELPER, ['--list-profiles', 'Morph.Job.'], { encoding: 'utf8' }).stdout.trim();
+console.log(`job profiles left by the runs above: ${left ? left.split(/\r?\n/).length : 0}`);
+results.push({ name: 'job profiles left', left });
 if (outFile) fs.writeFileSync(outFile, JSON.stringify(results, null, 2));
-if (process.argv.includes('--strict') && (results.some((r) => r.status !== undefined && r.status !== 0) || left)) process.exit(1);
+if (process.argv.includes('--strict') && (results.some((r) => r.shipped && r.ok === false) || left)) process.exit(1);

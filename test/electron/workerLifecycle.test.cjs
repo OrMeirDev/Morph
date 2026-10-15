@@ -12,7 +12,7 @@ const { createStack } = require('./engineStack.cjs');
 const { tmpDir } = require('./helpers.cjs');
 
 const FIXTURE = path.join(__dirname, 'fixtures', 'fake-confine.cjs');
-const runtime = { exe: process.execPath, env: {} };
+const runtime = { exe: process.execPath, args: [], env: {} };
 let sharp = null;
 try { sharp = require('sharp'); } catch { /* checked per test */ }
 const needsSharp = { skip: !sharp && 'sharp not installed', timeout: 120000 };

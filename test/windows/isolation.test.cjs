@@ -49,7 +49,7 @@ const run = (name, args, ws, o = {}) => S.tools.run(name, args, { timeoutMs: 120
 // 'imageworker'), running a probe script instead of the worker: what can code in there do?
 async function workerProbe(ws, script) {
   const runtime = workerRuntime();
-  const launch = S.tools.confinement.prepare('imageworker', runtime.exe, ['-e', script], { workspace: ws.dir, read: workerReadRoots(runtime) });
+  const launch = S.tools.confinement.prepare('imageworker', runtime.exe, [...(runtime.args || []), '-e', script], { workspace: ws.dir, read: workerReadRoots(runtime) });
   const r = await runProcess(runtime.exe, [], { timeoutMs: 60000, name: 'probe', captureStdout: true, launch: { ...launch, env: { ...launch.env, ...runtime.env } } }).catch((e) => ({ error: e.message, stdout: '' }));
   const line = (r.stdout || '').split(/\r?\n/).find((l) => l.startsWith('RESULT '));
   return line ? JSON.parse(line.slice(7)) : { failedToRun: r.error || r.stdout };
