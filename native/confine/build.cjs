@@ -17,7 +17,7 @@ const OUT_DIR = path.join(__dirname, '..', 'out');
 const OUT = path.join(OUT_DIR, 'morph-confine.exe');
 
 const CL_FLAGS = ['/nologo', '/O2', '/W4', '/GS', '/guard:cf', '/MT', '/Brepro', '/DUNICODE', '/D_UNICODE'];
-const LINK_FLAGS = ['/link', '/Brepro', '/DYNAMICBASE', '/NXCOMPAT', '/CETCOMPAT', '/guard:cf', '/SUBSYSTEM:CONSOLE', 'userenv.lib', 'advapi32.lib'];
+const LINK_FLAGS = ['/link', '/Brepro', '/DYNAMICBASE', '/NXCOMPAT', '/CETCOMPAT', '/guard:cf', '/SUBSYSTEM:CONSOLE', 'userenv.lib', 'advapi32.lib', 'user32.lib'];
 
 function vcvars() {
   const vswhere = path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Microsoft Visual Studio', 'Installer', 'vswhere.exe');
@@ -43,7 +43,7 @@ function buildMsvc() {
 function buildMingw() {
   fs.mkdirSync(OUT_DIR, { recursive: true });
   const out = path.join(OUT_DIR, 'morph-confine.mingw.exe');
-  execFileSync('x86_64-w64-mingw32-gcc', ['-municode', '-O2', '-Wall', '-Wextra', '-Wno-unused-parameter', '-Werror', '-o', out, SRC, '-luserenv', '-ladvapi32', '-Wl,--no-insert-timestamp'], { stdio: 'inherit' });
+  execFileSync('x86_64-w64-mingw32-gcc', ['-municode', '-O2', '-Wall', '-Wextra', '-Wno-unused-parameter', '-Werror', '-o', out, SRC, '-luserenv', '-ladvapi32', '-luser32', '-Wl,--no-insert-timestamp'], { stdio: 'inherit' });
   return out;
 }
 

@@ -20,7 +20,8 @@
 //                          restricted copy of the caller's token at Low integrity, all privileges
 //                          but traverse dropped, Administrators deny-only. Windows then refuses
 //                          writes to anything not labelled Low (all normal user files); reads and
-//                          the network are NOT restricted in this mode.
+//                          the network are NOT restricted in this mode. The engine runs on a
+//                          window station and desktop of its own (see privateDesktop)
 //   --read <path>          AppContainer: grant read + execute on <path> (inherited by children)
 //   --write <path>         AppContainer: grant modify on <path>; low integrity: label <path> Low
 //                          so the engine may write there (both inherited by children)
@@ -84,6 +85,7 @@ typedef struct {
   int appContainer;
   int lowIntegrity;
   int writeRestricted;
+  int privateDesktop;
   int profileDeleted;
   DWORD profileMs;
   int orphansKilled;
@@ -121,8 +123,9 @@ static void writeStats(const Options *o, HANDLE job) {
   }
   FILE *f = _wfopen(o->stats, L"wb");
   if (!f) return;
-  fprintf(f, "{\"outcome\":\"%s\",\"exitCode\":%lu,\"appContainer\":%s,\"lowIntegrity\":%s,\"writeRestricted\":%s,\"sid\":\"", R.outcome,
-          (unsigned long)R.exitCode, R.appContainer ? "true" : "false", R.lowIntegrity ? "true" : "false", R.writeRestricted ? "true" : "false");
+  fprintf(f, "{\"outcome\":\"%s\",\"exitCode\":%lu,\"appContainer\":%s,\"lowIntegrity\":%s,\"writeRestricted\":%s,\"privateDesktop\":%s,\"sid\":\"", R.outcome,
+          (unsigned long)R.exitCode, R.appContainer ? "true" : "false", R.lowIntegrity ? "true" : "false", R.writeRestricted ? "true" : "false",
+          R.privateDesktop ? "true" : "false");
   jsonEscape(f, R.sid);
   fprintf(f, "\",\"error\":\"");
   jsonEscape(f, R.error);
@@ -367,6 +370,61 @@ static DWORD activeProcesses(HANDLE job) {
   return acct.ActiveProcesses;
 }
 
+// Low-integrity engines get a window station and desktop of their own, as Chromium's sandbox gives
+// its restricted processes. Measured: on a service's window station (a CI runner step run from
+// PowerShell, Morph started from there too) the restricted Low token may not use the caller's
+// desktop, user32 fails to initialise and LibreOffice and Calibre exit with 0xC0000142 before
+// running any code. (Started under Git Bash they worked: its runtime puts descendants on a window
+// station of its own.) Only this user (not Administrators, which is deny-only in the token), the
+// restricted-code SID and SYSTEM may use them, and they are labelled Low so the engine may write
+// to them. A desktop of its own also keeps the engine away from the user's windows. The handles
+// stay open until this process exits; the engine's processes hold their own.
+static HWINSTA gWinsta;
+static HDESK gDesktop;
+static int privateDesktop(HANDLE token, wchar_t *name, size_t cap) {
+  BYTE buf[256];
+  DWORD got = 0;
+  wchar_t *user = NULL;
+  if (!GetTokenInformation(token, TokenUser, buf, sizeof buf, &got) || !ConvertSidToStringSidW(((TOKEN_USER *)buf)->User.Sid, &user)) {
+    setError("GetTokenInformation(user) for the desktop", GetLastError());
+    return 0;
+  }
+  wchar_t sddl[320];
+  swprintf(sddl, 320, L"D:P(A;;GA;;;SY)(A;;GA;;;%ls)(A;;GA;;;RC)S:(ML;;NW;;;LW)", user);
+  LocalFree(user);
+  PSECURITY_DESCRIPTOR sd = NULL;
+  if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl, SDDL_REVISION_1, &sd, NULL)) {
+    setError("desktop security descriptor", GetLastError());
+    return 0;
+  }
+  SECURITY_ATTRIBUTES sa = { sizeof sa, sd, FALSE };
+  wchar_t station[64];
+  swprintf(station, 64, L"Morph.Engine.%lu.%llu", GetCurrentProcessId(), GetTickCount64());
+  gWinsta = CreateWindowStationW(station, 0, GENERIC_ALL, &sa);
+  if (!gWinsta) {
+    setError("CreateWindowStation", GetLastError());
+    LocalFree(sd);
+    return 0;
+  }
+  // A desktop is created in the calling process's window station: switch to the new one briefly.
+  HWINSTA mine = GetProcessWindowStation();
+  if (!SetProcessWindowStation(gWinsta)) {
+    setError("SetProcessWindowStation", GetLastError());
+    LocalFree(sd);
+    return 0;
+  }
+  gDesktop = CreateDesktopW(L"Default", NULL, NULL, 0, GENERIC_ALL, &sa);
+  DWORD err = GetLastError();
+  SetProcessWindowStation(mine);
+  LocalFree(sd);
+  if (!gDesktop) {
+    setError("CreateDesktop", err);
+    return 0;
+  }
+  swprintf(name, cap, L"%ls\\Default", station);
+  return 1;
+}
+
 static DWORD finish(const Options *o, HANDLE job, DWORD code) {
   if (o->ephemeral && o->appContainer && R.appContainer) R.profileDeleted = SUCCEEDED(DeleteAppContainerProfile(o->appContainer));
   writeStats(o, job);
@@ -482,6 +540,7 @@ int wmain(int argc, wchar_t **argv) {
   }
   HANDLE token = NULL;
   PSID writeSid = NULL;
+  wchar_t desktop[96] = { 0 };
   if (o.lowIntegrity) {
     ULONGLONG t0 = GetTickCount64();
     if (o.restrictWrites) {
@@ -518,6 +577,8 @@ int wmain(int argc, wchar_t **argv) {
     R.writeRestricted = writeSid != NULL;
     if (!token) return (int)finish(&o, job, MC_EXIT_SETUP);
     R.lowIntegrity = 1;
+    if (!privateDesktop(token, desktop, sizeof desktop / sizeof desktop[0])) return (int)finish(&o, job, MC_EXIT_SETUP);
+    R.privateDesktop = 1;
   }
 
   // 3. Start the engine already inside the job (and the AppContainer), with only its stdio inherited.
@@ -550,6 +611,7 @@ int wmain(int argc, wchar_t **argv) {
   si.StartupInfo.hStdOutput = std[1];
   si.StartupInfo.hStdError = std[2];
   si.lpAttributeList = attrs;
+  if (R.privateDesktop) si.StartupInfo.lpDesktop = desktop;
 
   size_t cap = 32768, len = 0;
   wchar_t *cmd = (wchar_t *)calloc(cap, sizeof(wchar_t));

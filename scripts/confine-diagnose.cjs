@@ -4,9 +4,9 @@
 // Use it when engines report "unavailable" or confined runs fail.
 //   node scripts/confine-diagnose.cjs [--out confine-diagnose.json] [--strict]
 // --strict: exit 1 if a mode the shipped policy uses fails, or a job profile is left behind.
-// Variants the policy does not use are reported for information only, and so is the Low-integrity
-// tier: launched from a CI step (not from Morph or the tests) its engines fail to start with
-// 0xC0000142, while the same tier converts through the real path (test/windows/*.test.cjs).
+// Variants the policy does not use are reported for information only. CI runs this from PowerShell
+// on purpose: there the engines share a service's window station, the context in which Low-integrity
+// engines once failed with 0xC0000142 (now each gets a private window station and desktop).
 const { spawnSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
@@ -51,7 +51,7 @@ const cases = [
 for (const [name, c] of cases) {
   if (!fs.existsSync(c.exe)) continue;
   const t = policy.tools[c.tool];
-  run(`${name} (${t.isolation}${t.restrictWrites ? ', write-restricted' : ''})`, { ...c, shipped: t.isolation !== 'low-integrity' });
+  run(`${name} (${t.isolation}${t.restrictWrites ? ', write-restricted' : ''})`, c);
   if (t.isolation === 'low-integrity') {
     const flip = { ...policy.tools, [c.tool]: { ...t, restrictWrites: !t.restrictWrites } };
     run(`${name} (low-integrity${flip[c.tool].restrictWrites ? ', write-restricted' : ''})`, { ...c, tools: flip, shipped: false });
