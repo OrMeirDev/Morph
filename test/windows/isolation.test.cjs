@@ -209,5 +209,11 @@ test('Morph dying during an image conversion takes the confined worker with it',
   assert.deepEqual(await until(() => (processesOf(runtime.exe).length === 0 ? [] : null), 15000, 200), [], 'no worker outlived Morph');
 });
 
+test('no job AppContainer profile is left behind (helpers ended normally, killed, or cancelled above)', opts, () => {
+  const out = execFileSync(HELPER, ['--list-profiles', 'Morph.Job.'], { encoding: 'utf8' }).trim();
+  record({ leftoverJobProfiles: out ? out.split(/\r?\n/).length : 0 });
+  assert.equal(out, '', `left over: ${out}`);
+});
+
 // Pass the measurements file to the evidence (unused binding keeps pathToFileURL for future checks).
 void pathToFileURL;

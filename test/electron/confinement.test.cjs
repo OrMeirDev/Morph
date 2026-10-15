@@ -152,3 +152,23 @@ test('extra read folders are granted only inside Morph\'s folders', () => {
   const reads = argAfter(p.args.slice(0, p.args.indexOf('--')), '--read');
   assert.deepEqual(reads.sort(), [path.join(owned, 'code'), path.join(owned, 'runtime')].sort());
 });
+
+test('AppContainer calls register a per-job profile that is removed again (helper on exit, else cleanup)', async () => {
+  const root = tmpDir('conf-eph');
+  const ws = path.join(root, 'ws');
+  fs.mkdirSync(ws);
+  const c = new Confinement({ platform: 'win32', helper: process.execPath, disabled: false, ownedRoots: [path.join(root, 'bin')] });
+  const deleted = [];
+  c.deleteProfile = async (n) => { deleted.push(n); };
+  const p = c.prepare('ffmpeg', 'ffmpeg.exe', [], { workspace: ws });
+  const opts = p.args.slice(0, p.args.indexOf('--'));
+  assert.ok(opts.includes('--ephemeral'));
+  const name = argAfter(opts, '--appcontainer')[0];
+  await p.cleanup({ profileDeleted: true });
+  assert.deepEqual(deleted, [], 'the helper deleted it: nothing to do');
+  await p.cleanup(null); // killed helper: no statistics
+  assert.deepEqual(deleted, [name]);
+  const low = c.prepare('soffice', 'soffice.com', [], { workspace: ws });
+  await low.cleanup(null);
+  assert.deepEqual(deleted, [name], 'no profile for the Low-integrity tier');
+});

@@ -63,6 +63,7 @@ async function recoverInterruptedJobs() {
   const interrupted = journal.takeInterrupted();
   for (const r of interrupted) await discardLeftovers(r.leftovers || []);
   await sweepWorkspaces();
+  await tools.confinement.sweep(); // AppContainer profiles of jobs a crash interrupted
   return interrupted.length;
 }
 

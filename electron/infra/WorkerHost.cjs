@@ -60,7 +60,11 @@ function spawnConfinedWorker({ confinement, workspace, runtime }) {
   child.stdin.on('error', () => {}); // the worker may already be gone
   // Settles once the helper has exited and its statistics (written as it exits) are read.
   const closed = new Promise((resolve) => {
-    child.on('close', (code) => resolve({ code, stats: launch.readStats(), stderr: stderr.trim().split(/\r?\n/).pop()?.slice(0, 200) || '' }));
+    child.on('close', async (code) => {
+      const stats = launch.readStats();
+      if (launch.cleanup) await launch.cleanup(stats);
+      resolve({ code, stats, stderr: stderr.trim().split(/\r?\n/).pop()?.slice(0, 200) || '' });
+    });
     child.on('error', (e) => resolve({ code: null, stats: null, stderr: `spawn-failed:${e.code || e.message}` }));
   });
   return {

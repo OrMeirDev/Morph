@@ -19,6 +19,7 @@
 //   disabled     MORPH_CONFINEMENT=off: engines run unconfined; shown as such (diagnostics only)
 //   unsupported  not Windows (development and CI hosts): unconfined, shown as such
 const fs = require('fs');
+const { spawn } = require('child_process');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
@@ -97,6 +98,28 @@ class Confinement {
     };
   }
 
+    /** Deletes one AppContainer profile (a job's, after its helper was killed). */
+  deleteProfile(name) {
+    if (!this.helper) return Promise.resolve();
+    return new Promise((resolve) => {
+      const p = spawn(this.helper, ['--delete-profile', name], { windowsHide: true, stdio: 'ignore' });
+      p.on('error', () => resolve());
+      p.on('close', () => resolve());
+    });
+  }
+
+  /** Startup: removes the job profiles a crash left behind (no job runs yet). Returns how many. */
+  sweep() {
+    if (this.mode !== 'enforced') return Promise.resolve(0);
+    return new Promise((resolve) => {
+      let out = '';
+      const p = spawn(this.helper, ['--sweep-profiles', 'Morph.Job.'], { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+      p.stdout.on('data', (d) => { out += d; });
+      p.on('error', () => resolve(0));
+      p.on('close', () => resolve(Number(out.trim()) || 0));
+    });
+  }
+
   // The engine's own folder (e.g. bin/libreoffice for bin/libreoffice/program/soffice.com), when it
   // is inside a folder Morph owns. Elsewhere (a MORPH_TOOL_* override) nothing is granted.
   engineRoot(exe) {
@@ -126,8 +149,10 @@ class Confinement {
     const lim = { ...policy.defaults, ...(this.limits[tool] || {}) };
     const stats = path.join(os.tmpdir(), `morph-confine-${process.pid}-${crypto.randomUUID()}.json`);
     const h = [];
-    if (t.isolation === 'appcontainer') {
-      h.push('--appcontainer', jobName('Morph.Job', workspace), '--capability', READ_CAPABILITY);
+    const container = t.isolation === 'appcontainer' ? jobName('Morph.Job', workspace) : null;
+    if (container) {
+      // A profile per job (Windows needs it registered), deleted again by the helper on exit.
+      h.push('--appcontainer', container, '--ephemeral', '--capability', READ_CAPABILITY);
       const roots = [this.engineRoot(exe), ...read.filter((r) => this.ownedRoots.some((o) => r === o || isInside(path.resolve(r), o)))].filter(Boolean);
       for (const r of [...new Set(roots)]) h.push('--read', r);
       for (const w of [workspace, ...write]) h.push('--write', w);
@@ -155,6 +180,9 @@ class Confinement {
       readStats: () => {
         try { const s = JSON.parse(fs.readFileSync(stats, 'utf8')); fs.rmSync(stats, { force: true }); return s; } catch { return null; }
       },
+      // After the helper has closed: a killed helper (Stop, deadline) could not delete the job's
+      // AppContainer profile, so delete it here. Resolves once done; never throws.
+      cleanup: (s) => (container && !s?.profileDeleted ? this.deleteProfile(container) : Promise.resolve()),
     };
   }
 }

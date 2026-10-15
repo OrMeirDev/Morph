@@ -105,8 +105,9 @@ function runProcess(exe, args, { signal, timeoutMs, onLine, cwd, captureStdout =
     });
     child.stderr.on('data', (d) => { errTail.push(d); feed('err', d); });
     child.on('error', (e) => finish(reject, new ToolError(`spawn-failed:${name}:${e.code || e.message}`, 'spawn-failed')));
-    child.on('close', (code) => {
+    child.on('close', async (code) => {
       const stats = run.readStats();
+      if (run.cleanup) await run.cleanup(stats); // e.g. the job's AppContainer profile, if the helper was killed
       if (stopReason === 'cancelled') return finish(reject, new CancelledError());
       if (stopReason === 'timeout') return finish(reject, new TimeoutError(name));
       if (stopReason === 'too-much-output') return finish(reject, new ToolError(`output-too-large:${name}`, 'output-too-large'));

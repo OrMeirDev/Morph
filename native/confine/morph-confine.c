@@ -3,9 +3,13 @@
 //
 //   morph-confine.exe [options] -- <exe> [args...]
 //
-//   --appcontainer <name>  run in an AppContainer whose identity (SID) is derived from <name>; no
-//                          profile is created, so a per-job name leaves nothing behind. No network
-//                          capability: no network, no access to files unless granted below
+//   --appcontainer <name>  run in the AppContainer <name> (its profile is created if missing:
+//                          Windows refuses to start a process in an unregistered AppContainer,
+//                          error 2, measured). No network capability: no network, no access to
+//                          files unless granted below
+//   --ephemeral            delete that AppContainer profile again on every exit this process
+//                          controls (a killed helper leaves it; the caller then deletes it, and
+//                          --sweep-profiles removes leftovers after a crash)
 //   --capability <name>    add a custom capability SID derived from <name> to the AppContainer
 //                          token; --read grants then go to the capability (shared by every job,
 //                          granted once), --write grants to the job's own AppContainer SID
@@ -28,6 +32,8 @@
 //   --stats <file>         write the outcome and resource accounting as one JSON object
 //   --sid <name>           print the AppContainer SID for <name> and exit
 //   --delete-profile <name> delete the AppContainer profile <name> and exit
+//   --sweep-profiles <prefix> delete every AppContainer profile whose name starts with <prefix>
+//   --list-profiles <prefix>  print the names of those profiles, one per line
 //
 // Lifetime: the job has KILL_ON_JOB_CLOSE and only this process holds its handle, so killing this
 // process (cancel), its parent dying (--parent), a limit being hit, or the engine's main process
@@ -54,6 +60,7 @@
 
 typedef struct {
   const wchar_t *appContainer;
+  int ephemeral;
   const wchar_t *capability;
   const wchar_t *restrictWrites;
   int lowIntegrity;
@@ -77,6 +84,8 @@ typedef struct {
   int appContainer;
   int lowIntegrity;
   int writeRestricted;
+  int profileDeleted;
+  DWORD profileMs;
   int orphansKilled;
   DWORD peakActive;
   DWORD grantMs;
@@ -120,12 +129,12 @@ static void writeStats(const Options *o, HANDLE job) {
   fprintf(f, "\",\"unprotected\":\"");
   jsonEscape(f, R.unprotected);
   fprintf(f, "\",\"peakJobMemory\":%llu,\"peakProcessMemory\":%llu,\"totalProcesses\":%lu,\"peakActiveProcesses\":%lu,"
-             "\"userMs\":%llu,\"kernelMs\":%llu,\"orphansKilled\":%s,\"grantMs\":%lu,"
+             "\"userMs\":%llu,\"kernelMs\":%llu,\"orphansKilled\":%s,\"grantMs\":%lu,\"profileMs\":%lu,\"profileDeleted\":%s,"
              "\"limits\":{\"jobMemory\":%llu,\"processMemory\":%llu,\"maxProcesses\":%lu}}",
           (unsigned long long)ext.PeakJobMemoryUsed, (unsigned long long)ext.PeakProcessMemoryUsed,
           (unsigned long)acct.TotalProcesses, (unsigned long)R.peakActive,
           (unsigned long long)(acct.TotalUserTime.QuadPart / 10000), (unsigned long long)(acct.TotalKernelTime.QuadPart / 10000),
-          R.orphansKilled ? "true" : "false", (unsigned long)R.grantMs,
+          R.orphansKilled ? "true" : "false", (unsigned long)R.grantMs, (unsigned long)R.profileMs, R.profileDeleted ? "true" : "false",
           (unsigned long long)o->jobMemory, (unsigned long long)o->processMemory, (unsigned long)o->maxProcesses);
   fclose(f);
 }
@@ -136,6 +145,7 @@ static int parseArgs(int argc, wchar_t **argv, Options *o) {
     const wchar_t *v = i + 1 < argc ? argv[i + 1] : NULL;
     if (!wcscmp(a, L"--")) { o->argStart = i + 1; return o->argStart < argc && !(o->appContainer && o->lowIntegrity); }
     if (!wcscmp(a, L"--low-integrity")) { o->lowIntegrity = 1; continue; }
+    if (!wcscmp(a, L"--ephemeral")) { o->ephemeral = 1; continue; }
     if (!v) return 0;
     if (!wcscmp(a, L"--appcontainer")) o->appContainer = v;
     else if (!wcscmp(a, L"--capability")) o->capability = v;
@@ -154,9 +164,40 @@ static int parseArgs(int argc, wchar_t **argv, Options *o) {
   return 0;
 }
 
-// The AppContainer SID for `name` (derived, no profile: nothing to clean up per job).
+// The AppContainer SID for `name`, creating its profile if missing (a process cannot start in an
+// AppContainer whose profile is not registered).
 static HRESULT containerSid(const wchar_t *name, PSID *sid) {
-  return DeriveAppContainerSidFromAppContainerName(name, sid);
+  HRESULT hr = CreateAppContainerProfile(name, L"Morph conversion job",
+                                         L"One Morph conversion job: no network, files only as granted.", NULL, 0, sid);
+  if (hr == HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS)) hr = DeriveAppContainerSidFromAppContainerName(name, sid);
+  return hr;
+}
+
+// AppContainer profiles are registered per user under this key, one subkey per SID with the
+// profile name in "Moniker".
+#define MAPPINGS L"Software\\Classes\\Local Settings\\Software\\Microsoft\\Windows\\CurrentVersion\\AppContainer\\Mappings"
+static int forEachProfile(const wchar_t *prefix, int remove) {
+  HKEY root;
+  if (RegOpenKeyExW(HKEY_CURRENT_USER, MAPPINGS, 0, KEY_READ, &root) != ERROR_SUCCESS) return 0;
+  // Collect first: deleting while enumerating would shift the indices.
+  wchar_t (*names)[256] = calloc(4096, sizeof *names);
+  int n = 0;
+  wchar_t sub[256];
+  for (DWORD i = 0; names && n < 4096; i++) {
+    DWORD len = 256;
+    if (RegEnumKeyExW(root, i, sub, &len, NULL, NULL, NULL, NULL) != ERROR_SUCCESS) break;
+    wchar_t moniker[256];
+    DWORD size = sizeof moniker;
+    if (RegGetValueW(root, sub, L"Moniker", RRF_RT_REG_SZ, NULL, moniker, &size) != ERROR_SUCCESS) continue;
+    if (!wcsncmp(moniker, prefix, wcslen(prefix))) wcscpy_s(names[n++], 256, moniker);
+  }
+  RegCloseKey(root);
+  for (int i = 0; i < n; i++) {
+    if (remove) DeleteAppContainerProfile(names[i]);
+    else wprintf(L"%ls\n", names[i]);
+  }
+  free(names);
+  return n;
 }
 
 // A custom capability SID (S-1-15-3-...) derived from `name`.
@@ -327,6 +368,7 @@ static DWORD activeProcesses(HANDLE job) {
 }
 
 static DWORD finish(const Options *o, HANDLE job, DWORD code) {
+  if (o->ephemeral && o->appContainer && R.appContainer) R.profileDeleted = SUCCEEDED(DeleteAppContainerProfile(o->appContainer));
   writeStats(o, job);
   if (R.error[0]) fprintf(stderr, "morph-confine: %s\n", R.error);
   fflush(stderr);
@@ -339,6 +381,11 @@ int wmain(int argc, wchar_t **argv) {
     wchar_t *s = NULL;
     if (FAILED(containerSid(argv[2], &sid)) || !ConvertSidToStringSidW(sid, &s)) return (int)MC_EXIT_SETUP;
     wprintf(L"%ls\n", s);
+    return 0;
+  }
+  if (argc == 3 && (!wcscmp(argv[1], L"--sweep-profiles") || !wcscmp(argv[1], L"--list-profiles"))) {
+    int n = forEachProfile(argv[2], !wcscmp(argv[1], L"--sweep-profiles"));
+    if (!wcscmp(argv[1], L"--sweep-profiles")) wprintf(L"%d\n", n);
     return 0;
   }
   if (argc == 3 && !wcscmp(argv[1], L"--delete-profile")) {
@@ -392,8 +439,11 @@ int wmain(int argc, wchar_t **argv) {
   SECURITY_CAPABILITIES caps = { 0 };
   SID_AND_ATTRIBUTES capAttr = { 0 };
   if (o.appContainer) {
+    ULONGLONG p0 = GetTickCount64();
     HRESULT hr = containerSid(o.appContainer, &sid);
-    if (FAILED(hr)) { setError("DeriveAppContainerSidFromAppContainerName", (DWORD)hr); return (int)finish(&o, job, MC_EXIT_SETUP); }
+    if (FAILED(hr)) { setError("CreateAppContainerProfile", (DWORD)hr); return (int)finish(&o, job, MC_EXIT_SETUP); }
+    R.appContainer = 1; // a profile exists from here on (deleted on exit with --ephemeral)
+    R.profileMs = (DWORD)(GetTickCount64() - p0);
     if (o.capability) {
       capSid = capabilitySid(o.capability);
       if (!capSid) { setError("DeriveCapabilitySidsFromName", GetLastError()); return (int)finish(&o, job, MC_EXIT_SETUP); }
