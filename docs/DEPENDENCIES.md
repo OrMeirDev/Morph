@@ -25,6 +25,15 @@ Updated 2026-10-14 on branch `claude/dazzling-johnson-3zccoi`.
 The audit's suggested fix (`electron-builder@26.5.0`, a downgrade) reintroduces the high
 app-builder-lib/tar advisories and is not applied. Never use `npm audit fix --force`.
 
+## Confinement helper (native/confine, built from source)
+
+`morph-confine.exe` is Morph's own code (`native/confine/morph-confine.c`, about 400 lines of C,
+Win32 only: Job Objects, AppContainer, restricted tokens, ACLs). It is not downloaded: CI and
+`npm run dist` build it with the MSVC toolchain on the build machine (`native/confine/build.cjs`:
+`/MT /Brepro /guard:cf /CETCOMPAT`, static C runtime so it needs no VC++ redistributable), and
+record the compiler version and SHA-256 in `native/out/morph-confine.json` (uploaded with the CI
+evidence). The same compiler version gives the same bytes. `--mingw` is a compile check only.
+
 ## Native engines (bin/, not npm)
 
 Pinned in `scripts/engines.lock.json` (exact URL + SHA-256 of each download) from the Windows payload

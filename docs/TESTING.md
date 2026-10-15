@@ -36,9 +36,15 @@ fails if any test at all was skipped.
 | Installer | `e2e/installer-check.cjs` | 1.0.3 silent install, v0 settings/history seeded, new build installed over it by running its installer, installed copy smoke-tested, silent uninstall keeps user data |
 | In-app auto-update | `e2e/autoupdate-check.cjs` | the real electron-updater in an installed build checks a local feed (127.0.0.1, never published), downloads and verifies the next version, and installs it with "restart to update" while LibreOffice converts: conversion cancelled with no output/staging/process, journal empty at quit, new version registered, app restarts by itself, settings and history kept, packaged smoke on the updated app |
 | Signature | `e2e/signature-check.cjs` | Authenticode status of installer and app; `unsigned` is reported as pending, never as passed; with `MORPH_PUBLISHER` set it requires a valid, timestamped signature by that subject |
+| Confinement policy | `confinement.test` (any host) | every tool has a measured isolation and limits; modes (enforced / unavailable / disabled / unsupported) never fall back silently; grants only on Morph's folders; Low-integrity labels; helper outcomes → errors; limit overrides |
+| Confinement on Windows (real) | `test/windows/confinement.test` | see § D2 checks: real restricted processes, OS denials, kills and limits |
+| Real-world corpus | `corpus.test` | 6 public-domain files made by other tools (`test/corpus/SOURCES.md`, SHA-256 checked, never modified): Hebrew poem with niqqud DOCX → PDF/ODT/TXT, PDF → TXT/PNG, EPUB → DOCX/TXT (known RTL limit pinned); IRS W-9 → TXT/JPG/DOCX; Census XLSX → CSV/ODS; Gutenberg EPUB → TXT/AZW3/PDF |
 | UI (real window) | `e2e/conversion-flow.cjs` | 15 checks listed in the script |
 
-All fixtures are generated at test time (no binary fixtures in git).
+Generated fixtures are made at test time; the only files kept in git are the real-world corpus in
+`test/corpus` (public domain, attribution and hashes in `SOURCES.md`). A generated fixture proves
+a feature Morph controls survives; a corpus file proves a document nobody made for these tests
+converts and keeps its text. Neither proves every possible file.
 
 ## Results (CI on dbe853f, run 38631238070)
 

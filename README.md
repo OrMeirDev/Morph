@@ -8,6 +8,13 @@ Download `Morph-Setup-x.y.z.exe` from the [latest release](https://github.com/Or
 
 The installer is not code-signed, so Windows SmartScreen warns on first run: click **More info → Run anyway**.
 
+Conversions run on your computer, offline. Each conversion engine works on a copy of the file in
+a private folder and runs in its own Windows job (stopped as a whole on Stop or if Morph closes):
+ffmpeg, 7-Zip and Poppler have no network and cannot touch your other files; LibreOffice and
+Calibre cannot write to your files but can still read them and use the network. FAT32/exFAT
+drives (many USB sticks) have no permissions, so this protection does not cover them. Details:
+`docs/ARCHITECTURE.md` (D2).
+
 ## What it converts
 
 | Drop a… | Get |

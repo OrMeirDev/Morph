@@ -13,11 +13,12 @@ features/conversion ── commands ──▶ ipc/router (sender + schema check)
         ▲                             │      issues file IDs                   infra/detection, gifFrames
         │ job:update                  └─ app/ConversionCoordinator                file-type
         └──────────────────────────────── queue, state, cancel, history
-                                            │ ctx (workspace, run, worker, staging, signal)
+                                            │ ctx (workspace, input copy, run, worker, signal)
                                             ▼
                                        adapters/{ffmpeg,image,pdf,office,ebook,archive}
-                                            │ ProcessRunner ──────────────────▶ ffmpeg, 7-Zip, Poppler,
-                                            │                                   LibreOffice, Calibre
+                                            │ ToolRegistry.run → ProcessRunner
+                                            │   → morph-confine.exe (Job Object ─▶ ffmpeg, 7-Zip, Poppler
+                                            │     + AppContainer / Low IL)          LibreOffice, Calibre
                                             │ runInFreshWorker ───────────────▶ engine worker (per job)
                                             ▼                                   adapters/imageOps (sharp…)
                                        artifactValidator → OutputPublisher → HistoryRepository
@@ -82,10 +83,51 @@ features/conversion ── commands ──▶ ipc/router (sender + schema check)
 `update:install` and closing the window cancel all jobs and wait (bounded) for cleanup before
 `quitAndInstall` / quit.
 
-## Process isolation, honestly
+## Process isolation, honestly (D2)
 
-- Detection and image work run in an Electron utility process: a crash, hang or memory blow-up
-  ends the worker, not the app; deadlines kill hung requests. It is **not** an OS sandbox.
-- External tools run with deadlines and tree kill (`taskkill /T /F` on Windows, process groups
-  elsewhere). Windows Job Objects (kill-on-close, memory caps), restricted tokens and per-tool
-  filesystem/network restrictions are not implemented; see the backlog in `docs/AUDIT-STATUS.md`.
+Two guarantees, tracked and reported separately. Neither is called a sandbox without saying which.
+
+### 1. Lifetime and resources — every engine, Windows
+
+Every engine call (`ToolRegistry.run` → `infra/Confinement.cjs` → `native/out/morph-confine.exe`)
+runs in its own **Job Object**, held only by the helper:
+
+- `KILL_ON_JOB_CLOSE`: Stop kills the helper, and with it every process in the job (LibreOffice's
+  `soffice.bin`, Calibre's `calibre-parallel`, conhost…); `taskkill /T` stays as a second path.
+- Parent watch: if Morph dies (crash, Task Manager), the helper ends the job within 250 ms.
+- When the engine's main process exits, anything it left behind is killed after 2 s.
+- Limits per engine (`domain/confinementPolicy.cjs`): job-wide committed memory and active
+  processes, chosen from measured peaks (rule and numbers in the file); a hit ends the job with
+  `limit-memory` / `limit-processes`, the job fails, nothing is published. Override:
+  `MORPH_CONFINE_LIMITS`.
+- UI restrictions: no clipboard, no global atoms, no display/system settings, no logoff.
+
+### 2. Files and network — per engine, from measurements
+
+| Tier | Engines | Files | Network |
+| --- | --- | --- | --- |
+| AppContainer (no capabilities) | ffmpeg, ffprobe, 7-Zip, pdftoppm, pdftotext, pdfinfo | read: only its own folder under `bin\`; write: only the job workspace | none (loopback included) |
+| Low integrity (restricted token) | LibreOffice, Calibre | write: only folders Morph labelled Low (the job workspace, the LibreOffice profile); **read: anything the user can read** | **not restricted** |
+
+LibreOffice and Calibre are not in the AppContainer because they do not run there (measured,
+reasons in `confinementPolicy.cjs`). Both tiers never see the original or the output folder:
+`ctx.input()` copies the input into the workspace, engines write there, and the coordinator
+publishes (staging → reservation → rename) as before. Grants and labels are only added to folders
+Morph owns (`bin\<engine>` read-only, job workspaces, the LibreOffice profile); system and user
+folders are never modified. The AppContainer profile `Morph.Engines` is created on first use and
+deleted by the uninstaller.
+
+Modes, shown on the settings page and in `tools:status`: `enforced`; `unavailable` (helper missing
+→ engines refused, never run unconfined); `disabled` (`MORPH_CONFINEMENT=off`, diagnostics);
+`unsupported` (not Windows).
+
+### Not confined (open, tracked in `docs/AUDIT-STATUS.md`)
+
+- Low-integrity engines can read the user's files and reach the network (D2b).
+- Detection and image work (sharp, file-type, pdf-lib) run in an Electron utility process: separate
+  process, deadline, killed on cancel, but Electron offers no OS confinement for a Node utility
+  process (D2c).
+- All jobs use one AppContainer identity: with concurrency above 1, one engine could read another
+  job's workspace (concurrency is 1 today).
+- FAT32/exFAT volumes have no ACLs and no integrity labels: measured, an AppContainer engine (ffmpeg) can write to such a drive (run 38684568676). Morph never gives an engine a path there, but a compromised engine could reach it.
+- A Low-integrity LibreOffice whose write is refused does not exit; Morph's deadline ends it.
