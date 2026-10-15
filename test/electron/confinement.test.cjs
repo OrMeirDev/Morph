@@ -13,7 +13,7 @@ const { tmpDir } = require('./helpers.cjs');
 const argAfter = (args, flag) => args.filter((_, i) => args[i - 1] === flag);
 
 test('every tool has a confinement policy with a known isolation', () => {
-  assert.deepEqual(Object.keys(policy.tools).sort(), Object.keys(TOOLS).sort());
+  assert.deepEqual(Object.keys(policy.tools).sort(), [...Object.keys(TOOLS), 'imageworker'].sort());
   for (const [name, t] of Object.entries(policy.tools)) {
     assert.ok(['appcontainer', 'low-integrity'].includes(t.isolation), name);
     const lim = policy.limits[name];
@@ -60,7 +60,9 @@ test('enforced: AppContainer, read only the engine folder, write only the worksp
   const sep = p.args.indexOf('--');
   const opts = p.args.slice(0, sep);
   assert.deepEqual(p.args.slice(sep + 1), [ffmpeg, '-i', 'in.mp4', 'out.webm'], 'the engine call is passed through unchanged');
-  assert.deepEqual(argAfter(opts, '--appcontainer'), ['Morph.Engines']);
+  const [name] = argAfter(opts, '--appcontainer');
+  assert.match(name, /^Morph\.Job\.[0-9a-f]{24}$/, 'a per-job AppContainer identity');
+  assert.deepEqual(argAfter(opts, '--capability'), ['morph.engines.read'], 'reads through the shared capability');
   assert.deepEqual(argAfter(opts, '--read'), [path.join(bin, 'ffmpeg')], 'only the engine\'s own folder');
   assert.deepEqual(argAfter(opts, '--write'), [ws, extra]);
   assert.deepEqual(argAfter(opts, '--parent'), [String(process.pid)]);
@@ -127,4 +129,26 @@ test('MORPH_CONFINE_LIMITS overrides only known tools with positive integers', (
   assert.equal(withOverrides(base, '{"soffice":{"jobMemoryMb":-1}}').soffice.jobMemoryMb, 100);
   assert.equal(withOverrides(base, 'not json'), base);
   assert.equal(withOverrides(base, undefined), base);
+});
+
+test('per-job identity: two workspaces never share an AppContainer, the same workspace always maps to the same one', () => {
+  const root = tmpDir('conf-ids');
+  const c = new Confinement({ platform: 'win32', helper: process.execPath, disabled: false, ownedRoots: [path.join(root, 'bin')] });
+  const nameFor = (ws) => { fs.mkdirSync(ws, { recursive: true }); const a = c.prepare('ffmpeg', 'ffmpeg.exe', [], { workspace: ws }).args; return a[a.indexOf('--appcontainer') + 1]; };
+  const a = nameFor(path.join(root, 'ws', 'job-a'));
+  const b = nameFor(path.join(root, 'ws', 'job-b'));
+  assert.notEqual(a, b);
+  assert.equal(nameFor(path.join(root, 'ws', 'job-a')), a);
+  assert.ok(a.length <= 64, 'AppContainer names are at most 64 characters');
+});
+
+test('extra read folders are granted only inside Morph\'s folders', () => {
+  const root = tmpDir('conf-read');
+  const owned = path.join(root, 'app');
+  const ws = path.join(root, 'ws');
+  fs.mkdirSync(ws);
+  const c = new Confinement({ platform: 'win32', helper: process.execPath, disabled: false, ownedRoots: [owned], tools: { ...policy.tools, worker: { isolation: 'appcontainer' } } });
+  const p = c.prepare('worker', path.join(owned, 'runtime', 'node.exe'), ['w.cjs'], { workspace: ws, read: [path.join(owned, 'code'), 'C:\\Windows\\System32', path.join(root, 'elsewhere')] });
+  const reads = argAfter(p.args.slice(0, p.args.indexOf('--')), '--read');
+  assert.deepEqual(reads.sort(), [path.join(owned, 'code'), path.join(owned, 'runtime')].sort());
 });

@@ -35,11 +35,12 @@ test('friendlyError maps engine messages to Hebrew', () => {
 test('the engine-isolation line is never silent about a missing protection', async () => {
   const { confinementText } = await import('../../src/features/tools/toolPresentation.js');
   assert.equal(confinementText(null), null);
-  const all = confinementText({ mode: 'enforced', tools: { ffmpeg: 'appcontainer', soffice: 'appcontainer' } });
-  assert.equal(all.ok, true);
-  assert.doesNotMatch(all.text, /מוגבלים רק/);
-  const partial = confinementText({ mode: 'enforced', tools: { ffmpeg: 'appcontainer', calibre: 'job' } });
-  assert.match(partial.text, /Calibre מוגבלים רק בזמן ובזיכרון/);
+  const t = confinementText({ mode: 'enforced', tools: { ffmpeg: 'appcontainer', imageworker: 'appcontainer', soffice: 'low-integrity', calibre: 'low-integrity' } }).text;
+  assert.match(t, /ffmpeg, עיבוד התמונות: בלי רשת/);
+  assert.match(t, /לא בכונני FAT32\/exFAT/, 'the AppContainer condition is stated');
+  assert.match(t, /LibreOffice, Calibre: לא יכולים לכתוב לקבצים שלך, אבל יכולים לקרוא אותם ולהשתמש ברשת/);
+  assert.match(t, /זיהוי סוג הקובץ אינו מוגבל/);
+  assert.doesNotMatch(t, /בלי גישה לקבצים/, 'no blanket claim');
   assert.equal(confinementText({ mode: 'unavailable', reason: 'morph-confine.exe not found' }).ok, false);
   assert.match(confinementText({ mode: 'unavailable', reason: 'morph-confine.exe not found' }).text, /חסומים: morph-confine\.exe not found/);
   assert.match(confinementText({ mode: 'disabled' }).text, /כבוי/);

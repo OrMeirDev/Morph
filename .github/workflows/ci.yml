@@ -70,6 +70,8 @@ jobs:
       - run: npm run check:imports
       - name: Build the confinement helper (MSVC, D2)
         run: node native/confine/build.cjs
+      - name: Electron binary (the confined image worker runs Electron in node mode)
+        run: node node_modules/electron/install.js
       # Unit tests, sharp image matrix, 7-Zip archive tests (7-Zip confined in the AppContainer) and
       # the process-tree tests run here; ffmpeg/Poppler/LibreOffice/Calibre directions skip without bin/.
       - run: npm test
@@ -120,6 +122,8 @@ jobs:
         run: node scripts/bin-manifest.cjs verify
       - name: Build the confinement helper (MSVC, D2)
         run: node native/confine/build.cjs
+      - name: Electron binary (the confined image worker runs Electron in node mode)
+        run: node node_modules/electron/install.js
       - name: Prepare FAT32, exFAT and SMB test locations
         shell: pwsh
         run: |
@@ -138,7 +142,7 @@ jobs:
           Get-Volume -DriveLetter R,S | Format-Table DriveLetter,FileSystem,Size | Out-Host
       - name: Confinement on real Windows (D2) before the rest (fail fast; also part of npm test below)
         shell: bash
-        run: node --test --test-reporter=spec test/windows/confinement.test.cjs 2>&1 | tee confinement.log; test ${PIPESTATUS[0]} -eq 0
+        run: node --test --test-reporter=spec test/windows/confinement.test.cjs test/windows/isolation.test.cjs 2>&1 | tee confinement.log; test ${PIPESTATUS[0]} -eq 0
       - name: Tests with the bundled engines (nothing may skip)
         shell: bash
         run: |
@@ -218,6 +222,7 @@ jobs:
             autoupdate.json
             confinement.log
             confinement-measurements.json
+            isolation-measurements.json
             signed-files.txt
             native/out/morph-confine.json
           if-no-files-found: warn

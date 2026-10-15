@@ -81,11 +81,13 @@ test('a confined engine cannot write outside its workspace: the OS denies it (ca
     // A refused write does not make LibreOffice exit; it waits until the deadline ends it (measured).
     await run('soffice', ['--headless', '--norestore', '--nologo', `-env:UserInstallation=${pathToFileURL(ws.file('profile')).href}`, '--convert-to', 'pdf', '--outdir', outside, odt], ws, { write: [ws.file('profile')], timeoutMs: 60000 }).catch(() => {});
     assert.deepEqual(fs.readdirSync(outside).sort(), ['canary.png'], 'LibreOffice wrote nothing outside the workspace');
-    // Control on a fresh profile: the refused run was killed during its profile's first start, and
-    // an interrupted first start is unusable (the app rebuilds such a profile: payload.test).
+    // Control on a fresh profile and a fresh copy of the document: the refused run was killed while
+    // holding LibreOffice's lock file next to in.odt (".~lock.in.odt#"), and a second LibreOffice
+    // waits on that lock. The app never meets this: every conversion has a new workspace and copy.
     fs.mkdirSync(ws.file('profile2'));
-    await run('soffice', ['--headless', '--norestore', '--nologo', `-env:UserInstallation=${pathToFileURL(ws.file('profile2')).href}`, '--convert-to', 'pdf', '--outdir', ws.file('out'), odt], ws, { write: [ws.file('profile2')], timeoutMs: 300000 });
-    assert.ok(fs.existsSync(ws.file('out/in.pdf')), 'control: the same conversion into the workspace works');
+    const odt2 = makeRichOdt(ws.file('control.odt'));
+    await run('soffice', ['--headless', '--norestore', '--nologo', `-env:UserInstallation=${pathToFileURL(ws.file('profile2')).href}`, '--convert-to', 'pdf', '--outdir', ws.file('out'), odt2], ws, { write: [ws.file('profile2')], timeoutMs: 300000 });
+    assert.ok(fs.existsSync(ws.file('out/control.pdf')), 'control: the same conversion into the workspace works');
     const epub = require('../electron/helpers.cjs').makeRichEpub(ws.file('in.epub'));
     await run('calibre', [epub, path.join(outside, 'book.txt')], ws, { timeoutMs: 300000 }).catch(() => {});
     assert.deepEqual(fs.readdirSync(outside).sort(), ['canary.png'], 'Calibre wrote nothing outside the workspace');

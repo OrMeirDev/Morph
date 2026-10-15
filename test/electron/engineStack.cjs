@@ -16,7 +16,7 @@ if (sz) process.env.MORPH_TOOL_SEVENZIP = sz;
 const limits = require('../../electron/domain/limits.cjs');
 const { ToolRegistry } = require('../../electron/infra/ToolRegistry.cjs');
 const { runProcess } = require('../../electron/infra/ProcessRunner.cjs');
-const { PersistentWorker, runInFreshWorker } = require('../../electron/infra/WorkerHost.cjs');
+const { PersistentWorker, runInFreshWorker, probeImageWorker } = require('../../electron/infra/WorkerHost.cjs');
 const { JobRepository } = require('../../electron/infra/repositories.cjs');
 const { OfficeProfileManager } = require('../../electron/infra/OfficeProfileManager.cjs');
 const { FileIntakeService } = require('../../electron/app/FileIntakeService.cjs');
@@ -26,7 +26,10 @@ const adapters = require('../../electron/adapters/index.cjs');
 function createStack(tag, { confinement } = {}) {
   const root = tmpDir(tag);
   const worker = new PersistentWorker();
-  const tools = new ToolRegistry({ probeImages: () => worker.request({ type: 'probe' }, { timeoutMs: 30000 }), confinement });
+  const tools = new ToolRegistry({
+    probeImages: () => probeImageWorker({ confinement: tools.confinement, fallback: () => worker.request({ type: 'probe' }, { timeoutMs: 30000 }) }),
+    confinement,
+  });
   const intake = new FileIntakeService({ detect: (f) => worker.request({ type: 'detect', file: f }, { timeoutMs: 15000 }), tools, limits: limits.intake });
   const updates = [];
   const history = [];
@@ -39,7 +42,7 @@ function createStack(tag, { confinement } = {}) {
     adapters,
     officeProfiles: new OfficeProfileManager({ baseDir: path.join(root, 'lo') }),
     runTool: (name, args, o) => tools.run(name, args, o),
-    runWorker: runInFreshWorker,
+    runWorker: (msg, o) => runInFreshWorker(msg, { ...o, confine: { confinement: tools.confinement, workspace: o.workspace } }),
     emit: (u) => updates.push(u),
     workspaceRoot: path.join(root, 'ws'),
   });

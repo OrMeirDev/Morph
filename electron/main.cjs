@@ -8,7 +8,7 @@ const { autoUpdater } = require('electron-updater');
 
 const limits = require('./domain/limits.cjs');
 const { ToolRegistry } = require('./infra/ToolRegistry.cjs');
-const { PersistentWorker, runInFreshWorker } = require('./infra/WorkerHost.cjs');
+const { PersistentWorker, runInFreshWorker, probeImageWorker } = require('./infra/WorkerHost.cjs');
 const { SettingsRepository, HistoryRepository, JobRepository } = require('./infra/repositories.cjs');
 const { OfficeProfileManager } = require('./infra/OfficeProfileManager.cjs');
 const { discardLeftovers } = require('./infra/OutputPublisher.cjs');
@@ -34,7 +34,9 @@ const settings = new SettingsRepository(userData, { defaultFolder: path.join(app
 const history = new HistoryRepository(userData, { maxEntries: limits.history.maxEntries });
 const journal = new JobRepository(userData);
 const detectionWorker = new PersistentWorker();
-const tools = new ToolRegistry({ probeImages: () => detectionWorker.request({ type: 'probe' }, { timeoutMs: limits.deadlines.probe }) });
+const tools = new ToolRegistry({
+  probeImages: () => probeImageWorker({ confinement: tools.confinement, fallback: () => detectionWorker.request({ type: 'probe' }, { timeoutMs: limits.deadlines.probe }) }),
+});
 const intake = new FileIntakeService({
   detect: (file) => detectionWorker.request({ type: 'detect', file }, { timeoutMs: limits.deadlines.detect }),
   tools,
@@ -51,7 +53,7 @@ const coordinator = new ConversionCoordinator({
   adapters,
   officeProfiles,
   runTool: (name, args, o) => tools.run(name, args, { tailBytes: limits.logTailBytes, maxCaptureBytes: limits.maxCapturedBytes, ...o }),
-  runWorker: runInFreshWorker,
+  runWorker: (msg, o) => runInFreshWorker(msg, { ...o, confine: { confinement: tools.confinement, workspace: o.workspace } }),
   emit: (update) => sendToWindow('job:update', update),
 });
 

@@ -88,7 +88,8 @@ class ToolRegistry {
    */
   constructor({ probeImages, confinement, workspaceRoot } = {}) {
     this.probeImages = probeImages;
-    this.confinement = confinement || new Confinement({ ownedRoots: binRoots() });
+    // Morph owns its engine folders and its own code folder (the confined image worker reads it).
+    this.confinement = confinement || new Confinement({ ownedRoots: [...binRoots(), require('./WorkerHost.cjs').codeRoot()] });
     this.workspaceRoot = workspaceRoot;
     this.tools = {}; // name -> { path, ok, version, reason }
     this.images = { ok: false, heic: false, reason: 'not-probed' };

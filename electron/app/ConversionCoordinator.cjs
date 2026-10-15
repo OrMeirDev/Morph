@@ -188,7 +188,7 @@ class ConversionCoordinator {
           return inputCopy;
         },
         run: (name, args, o = {}) => this.runTool(name, args, { ...o, signal: abort.signal, workspace: workspace.dir }),
-        worker: (msg, o = {}) => this.runWorker(msg, { ...o, signal: abort.signal, onProgress: (p) => this.progress(job, p) }),
+        worker: (msg, o = {}) => this.runWorker(msg, { ...o, signal: abort.signal, onProgress: (p) => this.progress(job, p), workspace: workspace.dir }),
         officeProfiles: this.officeProfiles,
       };
       await fsp.mkdir(job.outDir, { recursive: true });

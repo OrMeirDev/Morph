@@ -3,8 +3,15 @@
 //
 //   morph-confine.exe [options] -- <exe> [args...]
 //
-//   --appcontainer <name>  run in the AppContainer <name> (profile created if missing) with no
-//                          capabilities: no network, no access to files unless granted below
+//   --appcontainer <name>  run in an AppContainer whose identity (SID) is derived from <name>; no
+//                          profile is created, so a per-job name leaves nothing behind. No network
+//                          capability: no network, no access to files unless granted below
+//   --capability <name>    add a custom capability SID derived from <name> to the AppContainer
+//                          token; --read grants then go to the capability (shared by every job,
+//                          granted once), --write grants to the job's own AppContainer SID
+//   --restrict-writes <name> with --low-integrity: also make the token write-restricted to a SID
+//                          derived from <name> (per job), so it may write only where that SID is
+//                          granted (the --write paths), not into other Low folders
 //   --low-integrity        instead of an AppContainer (for engines that cannot run in one): a
 //                          restricted copy of the caller's token at Low integrity, all privileges
 //                          but traverse dropped, Administrators deny-only. Windows then refuses
@@ -47,6 +54,8 @@
 
 typedef struct {
   const wchar_t *appContainer;
+  const wchar_t *capability;
+  const wchar_t *restrictWrites;
   int lowIntegrity;
   const wchar_t *read[MAX_GRANTS];
   int nRead;
@@ -67,6 +76,7 @@ typedef struct {
   char sid[192];
   int appContainer;
   int lowIntegrity;
+  int writeRestricted;
   int orphansKilled;
   DWORD peakActive;
   DWORD grantMs;
@@ -102,8 +112,8 @@ static void writeStats(const Options *o, HANDLE job) {
   }
   FILE *f = _wfopen(o->stats, L"wb");
   if (!f) return;
-  fprintf(f, "{\"outcome\":\"%s\",\"exitCode\":%lu,\"appContainer\":%s,\"lowIntegrity\":%s,\"sid\":\"", R.outcome, (unsigned long)R.exitCode,
-          R.appContainer ? "true" : "false", R.lowIntegrity ? "true" : "false");
+  fprintf(f, "{\"outcome\":\"%s\",\"exitCode\":%lu,\"appContainer\":%s,\"lowIntegrity\":%s,\"writeRestricted\":%s,\"sid\":\"", R.outcome,
+          (unsigned long)R.exitCode, R.appContainer ? "true" : "false", R.lowIntegrity ? "true" : "false", R.writeRestricted ? "true" : "false");
   jsonEscape(f, R.sid);
   fprintf(f, "\",\"error\":\"");
   jsonEscape(f, R.error);
@@ -128,6 +138,8 @@ static int parseArgs(int argc, wchar_t **argv, Options *o) {
     if (!wcscmp(a, L"--low-integrity")) { o->lowIntegrity = 1; continue; }
     if (!v) return 0;
     if (!wcscmp(a, L"--appcontainer")) o->appContainer = v;
+    else if (!wcscmp(a, L"--capability")) o->capability = v;
+    else if (!wcscmp(a, L"--restrict-writes")) o->restrictWrites = v;
     else if (!wcscmp(a, L"--read")) { if (o->nRead == MAX_GRANTS) return 0; o->read[o->nRead++] = v; }
     else if (!wcscmp(a, L"--write")) { if (o->nWrite == MAX_GRANTS) return 0; o->write[o->nWrite++] = v; }
     else if (!wcscmp(a, L"--job-memory")) o->jobMemory = _wcstoui64(v, NULL, 10) * 1024 * 1024;
@@ -142,12 +154,27 @@ static int parseArgs(int argc, wchar_t **argv, Options *o) {
   return 0;
 }
 
-// The AppContainer SID for `name`, creating its profile the first time.
+// The AppContainer SID for `name` (derived, no profile: nothing to clean up per job).
 static HRESULT containerSid(const wchar_t *name, PSID *sid) {
-  HRESULT hr = CreateAppContainerProfile(name, L"Morph conversion engines",
-                                         L"Runs Morph's file converters without network or file access beyond each job.", NULL, 0, sid);
-  if (hr == HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS)) hr = DeriveAppContainerSidFromAppContainerName(name, sid);
-  return hr;
+  return DeriveAppContainerSidFromAppContainerName(name, sid);
+}
+
+// A custom capability SID (S-1-15-3-...) derived from `name`.
+// (Looked up in KernelBase.dll at run time: not every toolchain's import library has it.)
+typedef BOOL(WINAPI *DeriveCapsFn)(LPCWSTR, PSID **, DWORD *, PSID **, DWORD *);
+static PSID capabilitySid(const wchar_t *name) {
+  PSID *groups = NULL, *caps = NULL;
+  DWORD nGroups = 0, nCaps = 0;
+  HMODULE kb = GetModuleHandleW(L"kernelbase.dll");
+  DeriveCapsFn derive = kb ? (DeriveCapsFn)(void *)GetProcAddress(kb, "DeriveCapabilitySidsFromName") : NULL;
+  if (!derive) { SetLastError(ERROR_PROC_NOT_FOUND); return NULL; }
+  if (!derive(name, &groups, &nGroups, &caps, &nCaps) || !nCaps) return NULL;
+  for (DWORD i = 0; i < nGroups; i++) LocalFree(groups[i]);
+  LocalFree(groups);
+  PSID sid = caps[0];
+  for (DWORD i = 1; i < nCaps; i++) LocalFree(caps[i]);
+  LocalFree(caps);
+  return sid;
 }
 
 // Adds an inheritable allow ACE for `sid` on `path` unless one with at least `mask` is there.
@@ -190,7 +217,7 @@ done:
 
 // A restricted, Low-integrity copy of this process's token for engines that cannot run in an
 // AppContainer. NULL on failure (error recorded).
-static HANDLE lowToken(void) {
+static HANDLE lowToken(PSID restrictTo) {
   HANDLE self = NULL, restricted = NULL;
   if (!OpenProcessToken(GetCurrentProcess(), TOKEN_DUPLICATE | TOKEN_QUERY | TOKEN_ASSIGN_PRIMARY | TOKEN_ADJUST_DEFAULT, &self)) {
     setError("OpenProcessToken", GetLastError());
@@ -201,12 +228,48 @@ static HANDLE lowToken(void) {
   CreateWellKnownSid(WinBuiltinAdministratorsSid, NULL, admins, &n1);
   CreateWellKnownSid(WinLowLabelSid, NULL, low, &n2);
   SID_AND_ATTRIBUTES denyOnly = { (PSID)admins, 0 };
-  if (!CreateRestrictedToken(self, DISABLE_MAX_PRIVILEGE, 1, &denyOnly, 0, NULL, 0, NULL, &restricted)) {
+  // Write-restricted: every write access check must also pass for one of these SIDs (reads are
+  // unaffected). The job's SID is granted only on its --write paths.
+  BYTE restrictedSid[SECURITY_MAX_SID_SIZE];
+  DWORD n3 = sizeof restrictedSid;
+  CreateWellKnownSid(WinRestrictedCodeSid, NULL, restrictedSid, &n3);
+  SID_AND_ATTRIBUTES restricting[2] = { { restrictTo, 0 }, { (PSID)restrictedSid, 0 } };
+  DWORD flags = DISABLE_MAX_PRIVILEGE | (restrictTo ? WRITE_RESTRICTED : 0);
+  if (!CreateRestrictedToken(self, flags, 1, &denyOnly, 0, NULL, restrictTo ? 2 : 0, restrictTo ? restricting : NULL, &restricted)) {
     setError("CreateRestrictedToken", GetLastError());
     CloseHandle(self);
     return NULL;
   }
   CloseHandle(self);
+  if (restrictTo) {
+    // Objects the engine creates itself (pipes, events, files) get this default DACL; it must name
+    // a restricting SID too, or the engine could not write to its own objects.
+    BYTE system[SECURITY_MAX_SID_SIZE];
+    DWORD n4 = sizeof system;
+    CreateWellKnownSid(WinLocalSystemSid, NULL, system, &n4);
+    BYTE userBuf[256];
+    DWORD got = 0;
+    if (!GetTokenInformation(restricted, TokenUser, userBuf, sizeof userBuf, &got)) {
+      setError("GetTokenInformation(user)", GetLastError());
+      CloseHandle(restricted);
+      return NULL;
+    }
+    PSID user = ((TOKEN_USER *)userBuf)->User.Sid;
+    PSID who[4] = { user, (PSID)system, restrictTo, (PSID)restrictedSid };
+    DWORD size = sizeof(ACL);
+    for (int i = 0; i < 4; i++) size += sizeof(ACCESS_ALLOWED_ACE) + GetLengthSid(who[i]);
+    PACL dacl = (PACL)LocalAlloc(LPTR, size);
+    BOOL ok = dacl && InitializeAcl(dacl, size, ACL_REVISION);
+    for (int i = 0; ok && i < 4; i++) ok = AddAccessAllowedAce(dacl, ACL_REVISION, GENERIC_ALL, who[i]);
+    TOKEN_DEFAULT_DACL dd = { dacl };
+    if (!ok || !SetTokenInformation(restricted, TokenDefaultDacl, &dd, sizeof dd)) {
+      setError("SetTokenInformation(default DACL)", GetLastError());
+      if (dacl) LocalFree(dacl);
+      CloseHandle(restricted);
+      return NULL;
+    }
+    LocalFree(dacl);
+  }
   TOKEN_MANDATORY_LABEL tml = { { (PSID)low, SE_GROUP_INTEGRITY } };
   if (!SetTokenInformation(restricted, TokenIntegrityLevel, &tml, sizeof tml + GetLengthSid((PSID)low))) {
     setError("SetTokenInformation(Low)", GetLastError());
@@ -285,7 +348,7 @@ int wmain(int argc, wchar_t **argv) {
 
   Options o = { 0 };
   if (!parseArgs(argc, argv, &o)) {
-    fwprintf(stderr, L"usage: morph-confine.exe [--appcontainer name | --low-integrity] [--read p] [--write p] [--job-memory MiB] "
+    fwprintf(stderr, L"usage: morph-confine.exe [--appcontainer name [--capability name] | --low-integrity [--restrict-writes name]] [--read p] [--write p] [--job-memory MiB] "
                      L"[--process-memory MiB] [--max-processes n] [--parent pid] [--cwd dir] [--stats file] -- exe [args]\n");
     return (int)MC_EXIT_USAGE;
   }
@@ -325,11 +388,20 @@ int wmain(int argc, wchar_t **argv) {
   }
 
   // 2. The AppContainer and its grants.
-  PSID sid = NULL;
+  PSID sid = NULL, capSid = NULL;
   SECURITY_CAPABILITIES caps = { 0 };
+  SID_AND_ATTRIBUTES capAttr = { 0 };
   if (o.appContainer) {
     HRESULT hr = containerSid(o.appContainer, &sid);
-    if (FAILED(hr)) { setError("CreateAppContainerProfile", (DWORD)hr); return (int)finish(&o, job, MC_EXIT_SETUP); }
+    if (FAILED(hr)) { setError("DeriveAppContainerSidFromAppContainerName", (DWORD)hr); return (int)finish(&o, job, MC_EXIT_SETUP); }
+    if (o.capability) {
+      capSid = capabilitySid(o.capability);
+      if (!capSid) { setError("DeriveCapabilitySidsFromName", GetLastError()); return (int)finish(&o, job, MC_EXIT_SETUP); }
+      capAttr.Sid = capSid;
+      capAttr.Attributes = SE_GROUP_ENABLED;
+      caps.Capabilities = &capAttr;
+      caps.CapabilityCount = 1;
+    }
     wchar_t *s = NULL;
     if (ConvertSidToStringSidW(sid, &s)) { toUtf8(s, R.sid, sizeof R.sid); LocalFree(s); }
     ULONGLONG t0 = GetTickCount64();
@@ -339,7 +411,7 @@ int wmain(int argc, wchar_t **argv) {
       DWORD mask = pass ? (FILE_GENERIC_READ | FILE_GENERIC_WRITE | FILE_GENERIC_EXECUTE | DELETE) : (FILE_GENERIC_READ | FILE_GENERIC_EXECUTE);
       for (int i = 0; i < n; i++) {
         DWORD err = 0;
-        int g = grant(list[i], sid, mask, &err);
+        int g = grant(list[i], (pass == 0 && capSid) ? capSid : sid, mask, &err);
         if (g < 0) {
           char p[400];
           toUtf8(list[i], p, sizeof p);
@@ -359,11 +431,19 @@ int wmain(int argc, wchar_t **argv) {
     R.appContainer = 1;
   }
   HANDLE token = NULL;
+  PSID writeSid = NULL;
   if (o.lowIntegrity) {
     ULONGLONG t0 = GetTickCount64();
+    if (o.restrictWrites) {
+      HRESULT hr = containerSid(o.restrictWrites, &writeSid);
+      if (FAILED(hr)) { setError("DeriveAppContainerSidFromAppContainerName(restrict)", (DWORD)hr); return (int)finish(&o, job, MC_EXIT_SETUP); }
+      wchar_t *s = NULL;
+      if (ConvertSidToStringSidW(writeSid, &s)) { toUtf8(s, R.sid, sizeof R.sid); LocalFree(s); }
+    }
     for (int i = 0; i < o.nWrite; i++) {
       DWORD err = 0;
       int g = labelLow(o.write[i], &err);
+      if (g == 0 && writeSid) g = grant(o.write[i], writeSid, FILE_GENERIC_READ | FILE_GENERIC_WRITE | FILE_GENERIC_EXECUTE | DELETE, &err);
       char p[400];
       toUtf8(o.write[i], p, sizeof p);
       if (g < 0) {
@@ -376,7 +456,8 @@ int wmain(int argc, wchar_t **argv) {
       }
     }
     R.grantMs = (DWORD)(GetTickCount64() - t0);
-    token = lowToken();
+    token = lowToken(writeSid);
+    R.writeRestricted = writeSid != NULL;
     if (!token) return (int)finish(&o, job, MC_EXIT_SETUP);
     R.lowIntegrity = 1;
   }

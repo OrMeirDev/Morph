@@ -4,8 +4,17 @@
 //   { id, type: 'image', task }           -> { id, progress } ... { id, ok, result }
 //   { id, type: 'probe' }                 -> { id, ok, result }
 // A crash, a hang or a kill here never takes Electron main with it.
+// Transports: Electron utility process (parentPort), child_process.fork (process.send), or, when
+// launched confined through morph-confine.exe (MORPH_WORKER_STDIO=1), JSON lines on stdin/stdout.
+// On stdout every message carries FRAME, so anything a library prints is never taken for a reply.
+const FRAME = '\u001eMORPH:';
+const stdio = process.env.MORPH_WORKER_STDIO === '1';
 const port = process.parentPort; // set when running as an Electron utility process
-const send = (msg) => (port ? port.postMessage(msg) : process.send(msg));
+const send = (msg) => {
+  if (stdio) process.stdout.write(`${FRAME}${JSON.stringify(msg)}\n`);
+  else if (port) port.postMessage(msg);
+  else process.send(msg);
+};
 
 async function handle(msg) {
   switch (msg.type) {
@@ -24,5 +33,8 @@ const onMessage = (msg) => {
   );
 };
 
-if (port) port.on('message', (e) => onMessage(e.data));
+if (stdio) {
+  require('readline').createInterface({ input: process.stdin }).on('line', (line) => { try { onMessage(JSON.parse(line)); } catch { /* not a request */ } })
+    .on('close', () => process.exit(0)); // the parent went away
+} else if (port) port.on('message', (e) => onMessage(e.data));
 else process.on('message', onMessage);

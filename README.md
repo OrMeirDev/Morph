@@ -8,12 +8,18 @@ Download `Morph-Setup-x.y.z.exe` from the [latest release](https://github.com/Or
 
 The installer is not code-signed, so Windows SmartScreen warns on first run: click **More info → Run anyway**.
 
-Conversions run on your computer, offline. Each conversion engine works on a copy of the file in
-a private folder and runs in its own Windows job (stopped as a whole on Stop or if Morph closes):
-ffmpeg, 7-Zip and Poppler have no network and cannot touch your other files; LibreOffice and
-Calibre cannot write to your files but can still read them and use the network. FAT32/exFAT
-drives (many USB sticks) have no permissions, so this protection does not cover them. Details:
-`docs/ARCHITECTURE.md` (D2).
+Conversions run on your computer, offline. On Windows, Morph limits what its conversion engines
+can do, in layers (details and gaps: `docs/ARCHITECTURE.md`, D2):
+
+- Every engine runs in a Windows job: Stop, closing Morph or Morph crashing ends all of its
+  processes, and each job has memory and process-count limits.
+- ffmpeg, 7-Zip, Poppler and the image engine (sharp) work on a copy of your file in a private
+  folder and run in an AppContainer with no network; Windows only lets them reach the folders
+  Morph grants. This relies on file permissions, so it does not cover FAT32/exFAT drives (many USB
+  sticks), which have none.
+- LibreOffice and Calibre run at Low integrity: Windows refuses their writes to your normal files,
+  but they can still read your files and use the network.
+- File-type detection runs in a separate Morph process that is not restricted by Windows.
 
 ## What it converts
 

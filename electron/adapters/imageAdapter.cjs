@@ -4,11 +4,13 @@ const limits = require('../domain/limits.cjs');
 
 async function run(ctx) {
   const { job } = ctx;
-  let input = job.input;
+  // The worker (sharp, libvips) gets the copy in the workspace, like every engine (D2).
+  let input = await ctx.input();
   let ext = job.ext;
   if (ext === 'bmp' || ext === 'ico') {
-    input = ctx.workspace.file('in.png');
-    await ctx.run('ffmpeg', ['-hide_banner', '-nostdin', '-n', '-i', await ctx.input(), '-frames:v', '1', '-update', '1', input], { timeoutMs: limits.deadlines.ffmpeg });
+    const png = ctx.workspace.file('in.png');
+    await ctx.run('ffmpeg', ['-hide_banner', '-nostdin', '-n', '-i', input, '-frames:v', '1', '-update', '1', png], { timeoutMs: limits.deadlines.ffmpeg });
+    input = png;
     ext = 'png';
   }
   ctx.throwIfCancelled();

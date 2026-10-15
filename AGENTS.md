@@ -63,10 +63,12 @@ Changes to native engines, `bin/`, Electron, sharp or packaging also need the Wi
   get a copy of the input inside the job workspace and write only there; never pass them an
   original or an output folder. A new engine needs an entry in `domain/confinementPolicy.cjs`
   chosen from a Windows measurement (`test/windows/confinement.test.cjs`), not assumed.
-- Say exactly what each tier protects. AppContainer engines: no network, files only as granted.
-  Low-integrity engines (LibreOffice, Calibre): no writes to user files, but reads and network
-  are open. The Job Object alone is lifetime and limits, not confinement. The utility-process
-  workers (sharp, detection) are separate processes, not OS-confined. Never call any of it a sandbox
+- Say exactly what each tier protects, with its conditions. Job Object (every engine): process
+  lifetime and resource limits, nothing about files or network. AppContainer (ffmpeg, ffprobe,
+  7-Zip, Poppler, the image worker): no network capability, file access only where Morph grants
+  it, enforced through ACLs, so not on FAT32/exFAT. Low integrity (LibreOffice, Calibre): writes
+  refused to normal (Medium) user files; reads and network open. The detection worker is a
+  separate process, not OS-confined. Never write "cannot access your files" or "sandboxed"
   without these qualifiers, and never fall back to unconfined silently.
 
 ## Keep changes reviewable

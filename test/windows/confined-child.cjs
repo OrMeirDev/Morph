@@ -28,7 +28,7 @@ const [root, file, target] = process.argv.slice(2);
     adapters,
     officeProfiles: new OfficeProfileManager({ baseDir: path.join(root, 'lo') }),
     runTool: (name, args, o) => tools.run(name, args, o),
-    runWorker: runInFreshWorker,
+    runWorker: (msg, o) => runInFreshWorker(msg, { ...o, confine: { confinement: tools.confinement, workspace: o.workspace } }),
     emit: (u) => process.stdout.write(`${JSON.stringify({ state: u.state, error: u.error })}\n`),
     workspaceRoot: path.join(root, 'ws'),
   });

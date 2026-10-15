@@ -16,10 +16,15 @@ const tools = {
   pdfinfo: { isolation: 'appcontainer' },
   soffice: {
     isolation: 'low-integrity',
+    restrictWrites: true, // PROVISIONAL: write-restricted to the job's own SID (isolation.test measures)
     reason: 'LibreOffice 26.2.6.3 in an AppContainer: --version works, but the first start of a profile never returns (killed after 300 s, run 38680593398); it needs named pipes and objects an AppContainer does not give it.',
   },
+  // The per-job image worker (sharp/libvips, heic-convert, pdf-lib, imagetracerjs) as Electron in
+  // node mode: AppContainer, reads Morph's runtime and code, writes the job workspace.
+  imageworker: { isolation: 'appcontainer' },
   calibre: {
     isolation: 'low-integrity',
+    restrictWrites: true, // PROVISIONAL, as above
     reason: 'Calibre 9.15.0 in an AppContainer stops at once: "RuntimeError: NUL file missing in windows" (calibre/utils/ipc/launch.py checks os.devnull, which an AppContainer cannot open; run 38680593398).',
   },
 };
@@ -42,6 +47,8 @@ const limits = {
   pdfinfo: { jobMemoryMb: 1024, maxProcesses: 16 },
   // 40,000-paragraph document to PDF: 395 MiB; 3 processes at once
   soffice: { jobMemoryMb: 2048, maxProcesses: 16 },
+  // Image worker: PROVISIONAL until the stress measurement (large PNG to WebP/AVIF) is recorded
+  imageworker: { jobMemoryMb: 4096, maxProcesses: 8 },
   // 120-chapter book to PDF (Qt WebEngine): 1218 MiB, 7 processes at once
   calibre: { jobMemoryMb: 5120, maxProcesses: 32 },
 };
@@ -51,7 +58,7 @@ const defaults = { jobMemoryMb: 2048, maxProcesses: 16 };
 // What the status shows next to the mode: the gaps, stated.
 const notes = [
   'LibreOffice and Calibre run at Low integrity: they cannot write to your files, but can read them and use the network.',
-  'Image work (sharp) and file detection run in Morph\'s own worker process, which is separate but not OS-confined.',
+  'File detection (file-type and Morph\'s GIF reader, no native code) runs in a separate worker process that is not OS-confined.',
   'FAT32/exFAT drives have no permissions: an engine can write anywhere on such a drive (measured, run 38684568676).',
 ];
 

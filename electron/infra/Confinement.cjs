@@ -26,7 +26,14 @@ const { ToolError } = require('./errors.cjs');
 const policy = require('../domain/confinementPolicy.cjs');
 
 const HELPER_NAME = 'morph-confine.exe';
+// Before per-job identities, every job shared this AppContainer profile; the uninstaller still
+// deletes it for installs that created it.
 const PROFILE = 'Morph.Engines';
+// Read access to Morph's own folders (engines, the worker's runtime and code) is granted once to
+// this custom capability; every job's AppContainer carries it. Write access is granted only to the
+// job's own AppContainer SID, derived from the job workspace, so jobs cannot reach each other.
+const READ_CAPABILITY = 'morph.engines.read';
+const jobName = (prefix, workspace) => `${prefix}.${crypto.createHash('sha256').update(path.resolve(workspace).toLowerCase()).digest('hex').slice(0, 24)}`;
 
 function helperCandidates() {
   const c = [];
@@ -66,9 +73,10 @@ class Confinement {
    * @param {string[]} [o.ownedRoots] folders Morph owns (bin roots): only these get read grants
    * @param {Record<string, object>} [o.limits] per-tool limits, default domain/confinementPolicy.cjs
    */
-  constructor({ platform = process.platform, helper, disabled = process.env.MORPH_CONFINEMENT === 'off', ownedRoots = [], limits = withOverrides(policy.limits) } = {}) {
+  constructor({ platform = process.platform, helper, disabled = process.env.MORPH_CONFINEMENT === 'off', ownedRoots = [], limits = withOverrides(policy.limits), tools = policy.tools } = {}) {
     this.ownedRoots = ownedRoots.map((r) => path.resolve(r));
     this.limits = limits;
+    this.tools = tools;
     this.helper = null;
     if (platform !== 'win32') { this.mode = 'unsupported'; this.reason = 'process confinement is implemented for Windows only'; return; }
     if (disabled) { this.mode = 'disabled'; this.reason = 'MORPH_CONFINEMENT=off: engines run without confinement'; return; }
@@ -84,7 +92,7 @@ class Confinement {
     return {
       mode: this.mode,
       reason: this.reason,
-      tools: Object.fromEntries(Object.keys(policy.tools).map((t) => [t, this.mode === 'enforced' ? policy.tools[t].isolation : 'none'])),
+      tools: Object.fromEntries(Object.keys(this.tools).map((t) => [t, this.mode === 'enforced' ? this.tools[t].isolation : 'none'])),
       notes: this.mode === 'enforced' ? policy.notes : [],
     };
   }
@@ -105,12 +113,13 @@ class Confinement {
    * @param {string} tool ToolRegistry name ('soffice', 'ffmpeg', ...)
    * @param {string} exe
    * @param {string[]} args
-   * @param {{ workspace?: string, cwd?: string, write?: string[] }} o
+   * @param {{ workspace?: string, cwd?: string, write?: string[], read?: string[] }} o `read`: extra
+   *   folders to read (the image worker's runtime and code); only folders Morph owns are granted
    */
-  prepare(tool, exe, args, { workspace, cwd, write = [] } = {}) {
+  prepare(tool, exe, args, { workspace, cwd, write = [], read = [] } = {}) {
     if (this.mode === 'unavailable') throw new ToolError(`confinement-unavailable:${tool}:${this.reason}`, 'confinement-unavailable');
     if (this.mode !== 'enforced') return { exe, args, cwd, env: undefined, confined: false, readStats: () => null };
-    const t = policy.tools[tool];
+    const t = this.tools[tool];
     if (!t) throw new ToolError(`confinement-policy-missing:${tool}`, 'confinement-unavailable');
     if (!workspace) throw new ToolError(`confinement-no-workspace:${tool}`, 'confinement-unavailable');
     for (const sub of ['tmp', 'appdata']) fs.mkdirSync(path.join(workspace, sub), { recursive: true });
@@ -118,12 +127,13 @@ class Confinement {
     const stats = path.join(os.tmpdir(), `morph-confine-${process.pid}-${crypto.randomUUID()}.json`);
     const h = [];
     if (t.isolation === 'appcontainer') {
-      h.push('--appcontainer', PROFILE);
-      const root = this.engineRoot(exe);
-      if (root) h.push('--read', root);
+      h.push('--appcontainer', jobName('Morph.Job', workspace), '--capability', READ_CAPABILITY);
+      const roots = [this.engineRoot(exe), ...read.filter((r) => this.ownedRoots.some((o) => r === o || isInside(path.resolve(r), o)))].filter(Boolean);
+      for (const r of [...new Set(roots)]) h.push('--read', r);
       for (const w of [workspace, ...write]) h.push('--write', w);
     } else if (t.isolation === 'low-integrity') {
       h.push('--low-integrity');
+      if (t.restrictWrites) h.push('--restrict-writes', jobName('Morph.Writes', workspace));
       for (const w of [workspace, ...write]) h.push('--write', w);
     }
     if (lim.jobMemoryMb) h.push('--job-memory', String(lim.jobMemoryMb));
@@ -161,4 +171,4 @@ function outcomeError(stats, name) {
   }
 }
 
-module.exports = { Confinement, outcomeError, withOverrides, PROFILE, HELPER_NAME };
+module.exports = { Confinement, outcomeError, withOverrides, jobName, PROFILE, READ_CAPABILITY, HELPER_NAME };
