@@ -38,9 +38,9 @@ test('the engine-isolation line is never silent about a missing protection', asy
   const t = confinementText({ mode: 'enforced', tools: { ffmpeg: 'appcontainer', imageworker: 'appcontainer', soffice: 'low-integrity', calibre: 'low-integrity' } }).text;
   assert.match(t, /ffmpeg, עיבוד התמונות: בלי רשת/);
   assert.match(t, /לא בכונני FAT32\/exFAT/, 'the AppContainer condition is stated');
-  assert.match(t, /LibreOffice, Calibre: לא יכולים לכתוב לקבצים שלך, אבל יכולים לקרוא אותם ולהשתמש ברשת/);
-  assert.match(t, /זיהוי סוג הקובץ אינו מוגבל/);
-  assert.doesNotMatch(t, /בלי גישה לקבצים/, 'no blanket claim');
+  assert.match(t, /LibreOffice, Calibre: Windows חוסם את הכתיבה שלהם לקבצים הרגילים שלך, אבל לא לתיקיות בשלמות נמוכה \(כמו LocalLow\) ולא לכונני FAT32\/exFAT; הם יכולים לקרוא את הקבצים שלך ולהשתמש ברשת/, 'the Low-tier gaps are stated');
+  assert.match(t, /זיהוי סוג הקובץ: בבידוד בלי רשת, ומקבל מ-Morph רק את הבתים שהוא מבקש/);
+  assert.doesNotMatch(t, /בלי גישה לקבצים|לא יכולים לכתוב לקבצים שלך/, 'no blanket claim');
   assert.equal(confinementText({ mode: 'unavailable', reason: 'morph-confine.exe not found' }).ok, false);
   assert.match(confinementText({ mode: 'unavailable', reason: 'morph-confine.exe not found' }).text, /חסומים: morph-confine\.exe not found/);
   assert.match(confinementText({ mode: 'disabled' }).text, /כבוי/);

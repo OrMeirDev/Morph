@@ -18,7 +18,8 @@ can do, in layers (details and gaps: `docs/ARCHITECTURE.md`, D2):
   Morph grants. This relies on file permissions, so it does not cover FAT32/exFAT drives (many USB
   sticks), which have none.
 - LibreOffice and Calibre run at Low integrity: Windows refuses their writes to your normal files,
-  but they can still read your files and use the network.
+  but not to folders marked Low integrity (such as `AppData\LocalLow`) or to FAT32/exFAT drives,
+  and they can still read your files and use the network.
 - File-type detection runs in the same kind of AppContainer and never opens your file itself:
   Morph hands it only the bytes it asks for.
 

@@ -76,8 +76,8 @@ const defaults = { jobMemoryMb: 2048, maxProcesses: 16 };
 
 // What the status shows next to the mode: the gaps, stated.
 const notes = [
-  'LibreOffice and Calibre run at Low integrity: they cannot write to your files, but can read them and use the network.',
-  'File detection (file-type and Morph\'s GIF reader, no native code) runs in a separate worker process that is not OS-confined.',
+  'LibreOffice and Calibre run at Low integrity: Windows refuses their writes to your normal (Medium-integrity) files, but not to Low-integrity folders such as LocalLow (measured) or to FAT32/exFAT drives; they can read your files and use the network.',
+  'File detection runs in an AppContainer worker that is never given your file: Morph passes it only the byte ranges it asks for.',
   'FAT32/exFAT drives have no permissions: an engine can write anywhere on such a drive (measured, run 38684568676).',
 ];
 

@@ -22,8 +22,8 @@ export function confinementText(c) {
     const ac = names(c, 'appcontainer');
     const low = names(c, 'low-integrity');
     if (ac) parts.push(`${ac}: בלי רשת, ורק עם הקבצים שהוקצו להמרה (לא בכונני FAT32/exFAT)`);
-    if (low) parts.push(`${low}: לא יכולים לכתוב לקבצים שלך, אבל יכולים לקרוא אותם ולהשתמש ברשת`);
-    parts.push('זיהוי סוג הקובץ אינו מוגבל על ידי Windows');
+    if (low) parts.push(`${low}: Windows חוסם את הכתיבה שלהם לקבצים הרגילים שלך, אבל לא לתיקיות בשלמות נמוכה (כמו LocalLow) ולא לכונני FAT32/exFAT; הם יכולים לקרוא את הקבצים שלך ולהשתמש ברשת`);
+    if (ac) parts.push('זיהוי סוג הקובץ: בבידוד בלי רשת, ומקבל מ-Morph רק את הבתים שהוא מבקש, לא את הקובץ עצמו');
     return { ok: true, text: parts.join('; ') };
   }
   if (c.mode === 'unavailable') return { ok: false, text: `בידוד לא זמין, ולכן מנועי ההמרה חסומים: ${c.reason}` };

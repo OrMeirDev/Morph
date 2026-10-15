@@ -122,7 +122,11 @@ test('enforced, low-integrity engines: Low token, Low labels on the workspace an
   assert.deepEqual(argAfter(opts, '--write'), [ws, path.join(root, 'profile')]);
   assert.deepEqual(argAfter(opts, '--job-memory'), [String(policy.limits.soffice.jobMemoryMb)]);
   assert.deepEqual(argAfter(opts, '--max-processes'), [String(policy.limits.soffice.maxProcesses)]);
-  assert.match(c.status().notes.join(' '), /Low integrity/);
+  const notes = c.status().notes.join(' ');
+  assert.match(notes, /Low integrity/);
+  assert.match(notes, /LocalLow/, 'the Low-folder gap is stated');
+  assert.match(notes, /FAT32\/exFAT/, 'the FAT32/exFAT gap is stated');
+  assert.doesNotMatch(notes, /cannot write to your files|not OS-confined/, 'no blanket claim, no stale detection note');
 });
 
 test('low-integrity with restrictReads: job SID, --restrict-reads, read grant only on the engine\'s own folder', () => {
