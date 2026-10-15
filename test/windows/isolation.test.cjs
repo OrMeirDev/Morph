@@ -160,7 +160,7 @@ test('jobs are isolated from each other: an engine in job B cannot read job A\'s
   } finally { await A.cleanup(); await B.cleanup(); }
 });
 
-test('Low-integrity tier: writing into a pre-existing Low folder outside the workspace (measured, both variants)', opts, async () => {
+test('Low-integrity tier: writing into a pre-existing Low folder outside the workspace (measured, both variants)', { ...opts, timeout: 900000 }, async () => {
   const localLow = path.join(process.env.USERPROFILE, 'AppData', 'LocalLow');
   assert.ok(fs.existsSync(localLow), 'LocalLow exists');
   const target = path.join(localLow, `morph-test-${Date.now()}`);
@@ -175,10 +175,11 @@ test('Low-integrity tier: writing into a pre-existing Low folder outside the wor
         const ws = await createWorkspace(`low-${restrictWrites}-${Date.now()}`, { root: path.join(L.root, 'ws') });
         const epub = makeRichEpub(ws.file('in.epub'));
         const out = path.join(target, `book-${restrictWrites}.txt`);
-        await L.tools.run('calibre', [epub, out], { workspace: ws.dir, timeoutMs: 120000 }).catch(() => {});
+        const t = restrictWrites ? 45000 : 120000; // the unshipped variant may hang until its deadline (measured)
+        await L.tools.run('calibre', [epub, out], { workspace: ws.dir, timeoutMs: t }).catch(() => {});
         const calibreOutside = fs.existsSync(out);
         // Does the conversion itself still work in this variant?
-        const inside = await L.tools.run('calibre', [epub, ws.file('ok.txt')], { workspace: ws.dir, timeoutMs: 300000 }).then(() => fs.existsSync(ws.file('ok.txt')), () => false);
+        const inside = await L.tools.run('calibre', [epub, ws.file('ok.txt')], { workspace: ws.dir, timeoutMs: restrictWrites ? 45000 : 300000 }).then(() => fs.existsSync(ws.file('ok.txt')), () => false);
         const odt = L.dirOf('lo-src');
         const doc = makeRichOdt(path.join(odt, 'doc.odt'));
         const lo = await L.convert(doc, 'pdf').then((u) => u.state, (e) => e.message);
