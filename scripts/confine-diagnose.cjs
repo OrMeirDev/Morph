@@ -35,7 +35,8 @@ function run(name, { tools = policy.tools, tool, exe, args, env = {}, read = [],
   const ok = r.status === 0 && s?.outcome === 'exited';
   const res = { name, shipped, ok, status: r.status, ms: Date.now() - t0, timedOut: !!r.error, stats: s, stdout: (r.stdout || '').trim().slice(-300), stderr: (r.stderr || '').trim().slice(-600) };
   console.log(`${ok ? 'OK  ' : 'FAIL'}${shipped ? '' : ' (not shipped)'} ${name}: status=${r.status} outcome=${s?.outcome} ${s?.error ? `error=${s.error} ` : ''}${!ok && res.stderr ? `stderr=${res.stderr.replace(/\s+/g, ' ').slice(0, 300)}` : ''}`);
-  fs.rmSync(ws, { recursive: true, force: true });
+  // A timed-out engine may still be dying (kill-on-close): retry, and never let cleanup end the run.
+  try { fs.rmSync(ws, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 }); } catch { /* left in TEMP */ }
   results.push(res);
 }
 
