@@ -19,8 +19,8 @@ features/conversion ── commands ──▶ ipc/router (sender + schema check)
                                             │ ToolRegistry.run → ProcessRunner
                                             │   → morph-confine.exe (Job Object ─▶ ffmpeg, 7-Zip, Poppler
                                             │     + AppContainer / Low IL)          LibreOffice, Calibre
-                                            │ runInFreshWorker ───────────────▶ engine worker (per job)
-                                            ▼                                   adapters/imageOps (sharp…)
+                                            │ runInFreshWorker → morph-confine ─▶ image worker (per job,
+                                            ▼                                   AppContainer; sharp…)
                                        artifactValidator → OutputPublisher → HistoryRepository
 ```
 
@@ -83,51 +83,70 @@ features/conversion ── commands ──▶ ipc/router (sender + schema check)
 `update:install` and closing the window cancel all jobs and wait (bounded) for cleanup before
 `quitAndInstall` / quit.
 
-## Process isolation, honestly (D2)
+## Process isolation, honestly (D2 — Partial)
 
-Two guarantees, tracked and reported separately. Neither is called a sandbox without saying which.
+D2 covers all native processing of untrusted files. Status: **Partial**. Engines and the image
+worker run confined; detection is not OS-confined, and LibreOffice/Calibre have only write
+protection. Each guarantee below is stated with its conditions; none of it is called a sandbox
+without them. Measurements: Windows Server 2025 (GitHub `windows-latest`), runs 38719799779 and
+38722315865; tests `test/windows/confinement.test.cjs` and `test/windows/isolation.test.cjs`.
 
-### 1. Lifetime and resources — every engine, Windows
+### 1. Lifetime and resources (Job Object) — every engine and the image worker
 
-Every engine call (`ToolRegistry.run` → `infra/Confinement.cjs` → `native/out/morph-confine.exe`)
-runs in its own **Job Object**, held only by the helper:
+Every call (`ToolRegistry.run` / the image worker → `infra/Confinement.cjs` →
+`native/out/morph-confine.exe`) runs in its own Job Object, held only by the helper:
 
-- `KILL_ON_JOB_CLOSE`: Stop kills the helper, and with it every process in the job (LibreOffice's
-  `soffice.bin`, Calibre's `calibre-parallel`, conhost…); `taskkill /T` stays as a second path.
-- Parent watch: if Morph dies (crash, Task Manager), the helper ends the job within 250 ms.
-- When the engine's main process exits, anything it left behind is killed after 2 s.
-- Limits per engine (`domain/confinementPolicy.cjs`): job-wide committed memory and active
-  processes, chosen from measured peaks (rule and numbers in the file); a hit ends the job with
-  `limit-memory` / `limit-processes`, the job fails, nothing is published. Override:
-  `MORPH_CONFINE_LIMITS`.
-- UI restrictions: no clipboard, no global atoms, no display/system settings, no logoff.
+- `KILL_ON_JOB_CLOSE`: Stop kills the helper and with it every process of the job (measured:
+  `soffice.com` + `soffice.bin`, `ebook-convert` + `calibre-parallel`, the image worker).
+- Parent watch: if Morph dies, the helper ends the job (measured: no engine or worker outlived a
+  killed parent).
+- Leftovers: when the engine's main process exits, anything it left is killed after 2 s.
+- Limits per engine (`domain/confinementPolicy.cjs`), job-wide committed memory and active
+  processes, from measured stress peaks (rule and numbers in the file). A hit ends the job with
+  `limit-memory`/`limit-processes`; the job fails and nothing is published (measured).
+- UI restrictions: clipboard, global atoms, display/system settings, logoff.
+- This is lifetime and resources only; it says nothing about files or network.
 
 ### 2. Files and network — per engine, from measurements
 
-| Tier | Engines | Files | Network |
+| Tier | Runs | Files | Network |
 | --- | --- | --- | --- |
-| AppContainer (no capabilities) | ffmpeg, ffprobe, 7-Zip, pdftoppm, pdftotext, pdfinfo | read: only its own folder under `bin\`; write: only the job workspace | none (loopback included) |
-| Low integrity (restricted token) | LibreOffice, Calibre | write: only folders Morph labelled Low (the job workspace, the LibreOffice profile); **read: anything the user can read** | **not restricted** |
+| AppContainer, no capabilities, one identity **per job** | ffmpeg, ffprobe, 7-Zip, Poppler, the image worker (sharp/libvips, heic-convert, pdf-lib, imagetracerjs as Electron in node mode) | read: Morph's own folders through one capability (`morph.engines.read`: `bin\`, Morph's code and runtime); write: only that job's workspace (granted to the job's own AppContainer SID). Enforced through NTFS ACLs, so **not on FAT32/exFAT** | none; loopback included |
+| Low integrity (restricted token: privileges dropped, Administrators deny-only) | LibreOffice, Calibre | write: refused to anything labelled Medium (normal user files) — allowed in the job workspace and the LibreOffice profile (labelled Low) **and in any other Low-labelled folder** (measured: Calibre wrote into `%USERPROFILE%\AppData\LocalLow`); read: **anything the user can read** | **not restricted** |
 
-LibreOffice and Calibre are not in the AppContainer because they do not run there (measured,
-reasons in `confinementPolicy.cjs`). Both tiers never see the original or the output folder:
-`ctx.input()` copies the input into the workspace, engines write there, and the coordinator
-publishes (staging → reservation → rename) as before. Grants and labels are only added to folders
-Morph owns (`bin\<engine>` read-only, job workspaces, the LibreOffice profile); system and user
-folders are never modified. The AppContainer profile `Morph.Engines` is created on first use and
-deleted by the uninstaller.
+Measured for the AppContainer tier: a canary outside the workspace is not overwritten; reading an
+original outside the workspace fails; code in the image worker's container gets EPERM reading or
+writing the original and creating files outside its workspace, can write inside, loads sharp, and
+its loopback connection times out with no connection reaching the server; ffmpeg cannot reach
+127.0.0.1 or the internet while the host can (controls). Between jobs: an engine (pdfinfo) and the
+image worker of job B cannot read job A's live workspace. On FAT32/exFAT an AppContainer engine
+can write (ffmpeg changed a canary there): those volumes keep no permissions.
+
+How engines are fed: they never get the original or the output folder. `ctx.input()` copies the
+input into the job workspace; engines write there; the coordinator publishes (staging →
+reservation → rename). A confined image worker's successful reply is provisional: the host waits
+until the helper has exited, reads its statistics and lets its final outcome decide
+(`infra/WorkerHost.cjs`).
+
+Per-job identity: the helper registers the job's AppContainer profile (Windows refuses to start a
+process in an unregistered one: error 2, measured) and deletes it on exit; if the helper is killed,
+Morph deletes it after the process closed; at start-up Morph sweeps profiles a crash left. Measured:
+no job profile is left after the test runs. Grants and labels are added only to folders Morph owns.
+
+Why LibreOffice and Calibre are not in the AppContainer (measured): LibreOffice's first profile
+start never returns there; Calibre (and Electron without `--no-stdio-init`) aborts because the
+NUL device cannot be opened. A write-restricted token per job (so they could not write into other
+Low folders) was measured too: neither starts with it, so it is not shipped.
 
 Modes, shown on the settings page and in `tools:status`: `enforced`; `unavailable` (helper missing
 → engines refused, never run unconfined); `disabled` (`MORPH_CONFINEMENT=off`, diagnostics);
-`unsupported` (not Windows).
+`unsupported` (not Windows). `scripts/confine-diagnose.cjs` runs every mode through the helper.
 
-### Not confined (open, tracked in `docs/AUDIT-STATUS.md`)
+### Not confined, or only partly (tracked in `docs/AUDIT-STATUS.md`)
 
-- Low-integrity engines can read the user's files and reach the network (D2b).
-- Detection and image work (sharp, file-type, pdf-lib) run in an Electron utility process: separate
-  process, deadline, killed on cancel, but Electron offers no OS confinement for a Node utility
-  process (D2c).
-- All jobs use one AppContainer identity: with concurrency above 1, one engine could read another
-  job's workspace (concurrency is 1 today).
-- FAT32/exFAT volumes have no ACLs and no integrity labels: measured, an AppContainer engine (ffmpeg) can write to such a drive (run 38684568676). Morph never gives an engine a path there, but a compromised engine could reach it.
-- A Low-integrity LibreOffice whose write is refused does not exit; Morph's deadline ends it.
+- File detection (file-type and Morph's GIF reader, no native code) runs in an Electron utility
+  process: separate process with a deadline, not OS-confined. It reads the original file.
+- LibreOffice and Calibre: no read restriction, no network restriction, and writes into other
+  Low-labelled folders are possible.
+- FAT32/exFAT: no protection by ACLs for any tier.
+- A refused write does not make LibreOffice exit; the deadline ends it.

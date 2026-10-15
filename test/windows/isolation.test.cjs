@@ -153,8 +153,9 @@ test('stress: image worker, 24 MP photo (6000x4000 RGB) to AVIF: shipped limit l
   assert.ok(mib * 2 <= policy.limits.imageworker.jobMemoryMb, `${mib} MiB leaves less than 2x headroom under ${policy.limits.imageworker.jobMemoryMb} MiB`);
 });
 
-test('stress: image worker, 64 MP RGBA (8000x8000) to AVIF: measured and recorded', opts, async () => {
-  await workerPeak('64mp-rgba', 8000, 8000, 4);
+test('stress: image worker, 64 MP RGBA (8000x8000) to AVIF fits under the shipped limit', opts, async () => {
+  const mib = await workerPeak('64mp-rgba', 8000, 8000, 4);
+  assert.ok(mib < policy.limits.imageworker.jobMemoryMb, `${mib} MiB is over the ${policy.limits.imageworker.jobMemoryMb} MiB limit`);
 });
 
 test('jobs are isolated from each other: an engine in job B cannot read job A\'s live workspace', opts, async () => {

@@ -51,8 +51,10 @@ const limits = {
   pdfinfo: { jobMemoryMb: 1024, maxProcesses: 16 },
   // 40,000-paragraph document to PDF: 395 MiB; 3 processes at once
   soffice: { jobMemoryMb: 2048, maxProcesses: 16 },
-  // Image worker: PROVISIONAL until the stress measurement (large PNG to WebP/AVIF) is recorded
-  imageworker: { jobMemoryMb: 4096, maxProcesses: 8 },
+  // Image worker (sharp, AVIF the heaviest target): 24 MP photo 1139 MiB, 64 MP RGBA 4129 MiB
+  // (run 38722315865; a 4096 MiB provisional limit stopped the 64 MP case cleanly). Rule here:
+  // max(4 x the 24 MP peak, 2 x the 64 MP peak) = 8258 -> 8704 MiB, so very large photos convert.
+  imageworker: { jobMemoryMb: 8704, maxProcesses: 8 },
   // 120-chapter book to PDF (Qt WebEngine): 1218 MiB, 7 processes at once
   calibre: { jobMemoryMb: 5120, maxProcesses: 32 },
 };

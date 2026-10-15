@@ -94,11 +94,17 @@ test('a confined engine cannot write outside its workspace: the OS denies it (ca
       await run('soffice', ['--headless', '--norestore', '--nologo', `-env:UserInstallation=${pathToFileURL(wc.file('profile')).href}`, '--convert-to', 'pdf', '--outdir', wc.file('out'), odt2], wc, { write: [wc.file('profile')], timeoutMs: 120000 });
       assert.ok(fs.existsSync(wc.file('out/control.pdf')), 'control: the same conversion into a workspace works');
     } finally { await wc.cleanup(); }
-    const epub = require('../electron/helpers.cjs').makeRichEpub(ws.file('in.epub'));
-    await run('calibre', [epub, path.join(outside, 'book.txt')], ws, { timeoutMs: 300000 }).catch(() => {});
-    assert.deepEqual(fs.readdirSync(outside).sort(), ['canary.png'], 'Calibre wrote nothing outside the workspace');
-    await run('calibre', [epub, ws.file('book.txt')], ws, { timeoutMs: 300000 });
-    assert.ok(fs.statSync(ws.file('book.txt')).size > 0, 'control: Calibre converts into the workspace');
+    // Calibre in its own workspace, as in the app (one engine family per job workspace; a workspace
+    // used before by AppContainer and LibreOffice runs refused Calibre's appdata folder, run
+    // 38722315865).
+    const we = await scratch('canary-calibre');
+    try {
+      const epub = require('../electron/helpers.cjs').makeRichEpub(we.file('in.epub'));
+      await run('calibre', [epub, path.join(outside, 'book.txt')], we, { timeoutMs: 120000 }).catch(() => {});
+      assert.deepEqual(fs.readdirSync(outside).sort(), ['canary.png'], 'Calibre wrote nothing outside the workspace');
+      await run('calibre', [epub, we.file('book.txt')], we, { timeoutMs: 300000 });
+      assert.ok(fs.statSync(we.file('book.txt')).size > 0, 'control: Calibre converts into the workspace');
+    } finally { await we.cleanup(); }
   } finally {
     // Contain a hang: no helper of this test may outlive it and disturb the process counts below.
     for (const pid of helpersOf(process.pid)) { try { execFileSync('taskkill', ['/pid', String(pid), '/T', '/F']); } catch { /* gone */ } }
