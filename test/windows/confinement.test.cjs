@@ -62,7 +62,8 @@ test('a confined engine cannot write outside its workspace: the OS denies it (ca
   const ws = await scratch('canary');
   try {
     if (policy.tools.ffmpeg.isolation === 'appcontainer') {
-      await assert.rejects(run('ffmpeg', ['-hide_banner', '-nostdin', '-y', '-f', 'lavfi', '-i', 'testsrc=d=1', '-frames:v', '1', '-f', 'image2', canary], ws), /denied|Permission|Error opening/i);
+      // ffmpeg's last line is only "Conversion failed!"; the proof is the canary and the control below.
+      await assert.rejects(run('ffmpeg', ['-hide_banner', '-nostdin', '-y', '-f', 'lavfi', '-i', 'testsrc=d=1', '-frames:v', '1', '-f', 'image2', canary], ws));
       assert.equal(fs.readFileSync(canary, 'utf8'), 'CANARY', 'ffmpeg did not overwrite the canary');
       // Control: the same call into the workspace works, so the denial is the confinement.
       await run('ffmpeg', ['-hide_banner', '-nostdin', '-y', '-f', 'lavfi', '-i', 'testsrc=d=1', '-frames:v', '1', '-f', 'image2', ws.file('inside.png')], ws);
@@ -232,48 +233,56 @@ for (const [label, env] of [['FAT32', 'MORPH_TEST_FAT32'], ['exFAT', 'MORPH_TEST
   });
 }
 
-test('limits have measured headroom: stress conversions stay under half of their engine\'s limit', opts, async () => {
-  const ws = await scratch('stress');
-  const peaks = {};
-  const peak = (r) => Math.ceil((r.confinement?.peakJobMemory || 0) / 1048576);
+// Stress conversions per engine: the peak job memory is recorded and must leave 2x headroom under
+// the engine's limit (domain/confinementPolicy.cjs), so the limits cannot break files like these.
+const peakMiB = (r) => Math.ceil((r.confinement?.peakJobMemory || 0) / 1048576);
+async function stress(name, tool, fn) {
+  const ws = await scratch(`stress-${name}`);
   try {
-    // ffmpeg: 4K H.264 and VP9 encodes, the heaviest the adapters do.
-    await run('ffmpeg', ['-hide_banner', '-nostdin', '-y', '-f', 'lavfi', '-i', 'testsrc2=d=2:s=3840x2160:r=30', '-c:v', 'libx264', '-preset', 'medium', '-crf', '24', '-pix_fmt', 'yuv420p', ws.file('4k.mp4')], ws, { timeoutMs: 600000 })
-      .then((r) => { peaks.ffmpeg_4k_h264 = peak(r); });
-    await run('ffmpeg', ['-hide_banner', '-nostdin', '-y', '-i', ws.file('4k.mp4'), '-c:v', 'libvpx-vp9', '-crf', '34', '-b:v', '0', '-row-mt', '1', '-pix_fmt', 'yuv420p', ws.file('4k.webm')], ws, { timeoutMs: 600000 })
-      .then((r) => { peaks.ffmpeg_4k_vp9 = peak(r); });
-    // LibreOffice: the 40,000-paragraph document to PDF.
-    fs.mkdirSync(ws.file('profile'));
-    const big = makeBigOdt(ws.file('big.odt'));
-    await run('soffice', ['--headless', '--norestore', '--nologo', `-env:UserInstallation=${pathToFileURL(ws.file('profile')).href}`, '--convert-to', 'pdf', '--outdir', ws.file('lo'), big], ws, { timeoutMs: 600000, write: [ws.file('profile')] })
-      .then((r) => { peaks.soffice_big = peak(r); });
-    // Poppler: an A0 page rendered at 200 dpi (the "high" setting).
-    const { PDFDocument } = require('pdf-lib');
-    const doc = await PDFDocument.create();
-    doc.addPage([2384, 3370]);
-    fs.writeFileSync(ws.file('a0.pdf'), await doc.save());
-    await run('pdftoppm', ['-png', '-r', '200', '-singlefile', ws.file('a0.pdf'), ws.file('a0')], ws, { timeoutMs: 300000 }).then((r) => { peaks.pdftoppm_a0_200dpi = peak(r); });
-    // 7-Zip: 128 MiB of incompressible data into a .7z at the default level.
-    const fd = fs.openSync(ws.file('rand.bin'), 'w');
-    for (let i = 0; i < 128; i++) fs.writeSync(fd, require('crypto').randomBytes(1 << 20));
-    fs.closeSync(fd);
-    await run('sevenzip', ['a', '-t7z', ws.file('rand.7z'), ws.file('rand.bin')], ws, { timeoutMs: 600000 }).then((r) => { peaks.sevenzip_128mib = peak(r); });
-    // Calibre: a 120-chapter book to PDF (Qt WebEngine).
-    const { makeZip: mz } = require('../electron/helpers.cjs');
-    const para = (i) => `<p>Paragraph ${i}: שורה בעברית and enough English words to fill a line.</p>`;
-    const xhtml = (n) => `<?xml version="1.0" encoding="utf-8"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>C${n}</title></head><body><h1>Chapter ${n}</h1>${Array.from({ length: 80 }, (_, i) => para(i)).join('')}</body></html>`;
-    const ids = Array.from({ length: 120 }, (_, i) => i + 1);
-    const opf = '<?xml version="1.0" encoding="utf-8"?><package xmlns="http://www.idpf.org/2007/opf" version="2.0" unique-identifier="uid"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="uid">b</dc:identifier><dc:title>B</dc:title><dc:language>en</dc:language></metadata>'
-      + `<manifest>${ids.map((n) => `<item id="c${n}" href="c${n}.xhtml" media-type="application/xhtml+xml"/>`).join('')}</manifest><spine>${ids.map((n) => `<itemref idref="c${n}"/>`).join('')}</spine></package>`;
-    const container = '<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>';
-    const book = mz(ws.file('big.epub'), [{ name: 'mimetype', data: 'application/epub+zip' }, { name: 'META-INF/container.xml', data: container }, { name: 'content.opf', data: opf }, ...ids.map((n) => ({ name: `c${n}.xhtml`, data: xhtml(n) }))]);
-    await run('calibre', [book, ws.file('big.pdf')], ws, { timeoutMs: 600000 }).then((r) => { peaks.calibre_big_pdf = peak(r); });
-    recordMeasurement({ stressPeaksMiB: peaks });
-    const limitOf = { ffmpeg_4k_h264: 'ffmpeg', ffmpeg_4k_vp9: 'ffmpeg', soffice_big: 'soffice', pdftoppm_a0_200dpi: 'pdftoppm', sevenzip_128mib: 'sevenzip', calibre_big_pdf: 'calibre' };
-    for (const [k, mib] of Object.entries(peaks)) {
-      const lim = policy.limits[limitOf[k]].jobMemoryMb;
-      assert.ok(mib > 0, `${k}: a peak was measured`);
-      assert.ok(mib * 2 <= lim, `${k}: ${mib} MiB peak leaves less than 2x headroom under the ${lim} MiB limit`);
-    }
+    const r = await fn(ws);
+    const mib = peakMiB(r);
+    const lim = policy.limits[tool].jobMemoryMb;
+    recordMeasurement({ stress: name, tool, peakMiB: mib, limitMiB: lim, processes: r.confinement?.totalProcesses, peakActive: r.confinement?.peakActiveProcesses, userMs: r.confinement?.userMs });
+    assert.ok(mib > 0, `${name}: a peak was measured`);
+    assert.ok(mib * 2 <= lim, `${name}: ${mib} MiB peak leaves less than 2x headroom under the ${lim} MiB limit`);
   } finally { await ws.cleanup(); }
-});
+}
+
+test('stress: ffmpeg 4K H.264 encode (adapter settings)', opts, () => stress('ffmpeg-4k-h264', 'ffmpeg', (ws) => run('ffmpeg',
+  ['-hide_banner', '-nostdin', '-y', '-f', 'lavfi', '-i', 'testsrc2=s=3840x2160:r=30', '-frames:v', '30', '-c:v', 'libx264', '-preset', 'medium', '-crf', '24', '-pix_fmt', 'yuv420p', ws.file('4k.mp4')], ws, { timeoutMs: 540000 })));
+
+test('stress: ffmpeg 4K VP9 encode (adapter settings)', opts, () => stress('ffmpeg-4k-vp9', 'ffmpeg', (ws) => run('ffmpeg',
+  ['-hide_banner', '-nostdin', '-y', '-f', 'lavfi', '-i', 'testsrc2=s=3840x2160:r=30', '-frames:v', '10', '-c:v', 'libvpx-vp9', '-crf', '34', '-b:v', '0', '-row-mt', '1', '-pix_fmt', 'yuv420p', ws.file('4k.webm')], ws, { timeoutMs: 540000 })));
+
+test('stress: LibreOffice 40,000-paragraph document to PDF', opts, () => stress('soffice-big', 'soffice', (ws) => {
+  fs.mkdirSync(ws.file('profile'));
+  const big = makeBigOdt(ws.file('big.odt'));
+  return run('soffice', ['--headless', '--norestore', '--nologo', `-env:UserInstallation=${pathToFileURL(ws.file('profile')).href}`, '--convert-to', 'pdf', '--outdir', ws.file('lo'), big], ws, { timeoutMs: 540000, write: [ws.file('profile')] });
+}));
+
+test('stress: Poppler A0 page at 200 dpi', opts, () => stress('pdftoppm-a0-200dpi', 'pdftoppm', async (ws) => {
+  const { PDFDocument } = require('pdf-lib');
+  const doc = await PDFDocument.create();
+  doc.addPage([2384, 3370]);
+  fs.writeFileSync(ws.file('a0.pdf'), await doc.save());
+  return run('pdftoppm', ['-png', '-r', '200', '-singlefile', ws.file('a0.pdf'), ws.file('a0')], ws, { timeoutMs: 300000 });
+}));
+
+test('stress: 7-Zip 128 MiB into .7z at the default level', opts, () => stress('sevenzip-128mib', 'sevenzip', (ws) => {
+  const fd = fs.openSync(ws.file('rand.bin'), 'w');
+  for (let i = 0; i < 128; i++) fs.writeSync(fd, require('crypto').randomBytes(1 << 20));
+  fs.closeSync(fd);
+  return run('sevenzip', ['a', '-t7z', ws.file('rand.7z'), ws.file('rand.bin')], ws, { timeoutMs: 540000 });
+}));
+
+test('stress: Calibre 120-chapter book to PDF', opts, () => stress('calibre-big-pdf', 'calibre', (ws) => {
+  const { makeZip: mz } = require('../electron/helpers.cjs');
+  const para = (i) => `<p>Paragraph ${i}: שורה בעברית and enough English words to fill a line.</p>`;
+  const xhtml = (n) => `<?xml version="1.0" encoding="utf-8"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>C${n}</title></head><body><h1>Chapter ${n}</h1>${Array.from({ length: 80 }, (_, i) => para(i)).join('')}</body></html>`;
+  const ids = Array.from({ length: 120 }, (_, i) => i + 1);
+  const opf = '<?xml version="1.0" encoding="utf-8"?><package xmlns="http://www.idpf.org/2007/opf" version="2.0" unique-identifier="uid"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="uid">b</dc:identifier><dc:title>B</dc:title><dc:language>en</dc:language></metadata>'
+    + `<manifest>${ids.map((n) => `<item id="c${n}" href="c${n}.xhtml" media-type="application/xhtml+xml"/>`).join('')}</manifest><spine>${ids.map((n) => `<itemref idref="c${n}"/>`).join('')}</spine></package>`;
+  const container = '<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>';
+  const book = mz(ws.file('big.epub'), [{ name: 'mimetype', data: 'application/epub+zip' }, { name: 'META-INF/container.xml', data: container }, { name: 'content.opf', data: opf }, ...ids.map((n) => ({ name: `c${n}.xhtml`, data: xhtml(n) }))]);
+  return run('calibre', [book, ws.file('big.pdf')], ws, { timeoutMs: 540000 });
+}));

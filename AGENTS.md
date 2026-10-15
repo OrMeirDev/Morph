@@ -58,8 +58,16 @@ Changes to native engines, `bin/`, Electron, sharp or packaging also need the Wi
   download is hash-checked. Never copy binaries into `bin/` by hand or fetch "latest".
 - A lock change goes with a passing `Bundled engines, packaged app and installer (Windows)` CI job,
   the new `bin-manifest.json` from that job, and `THIRD_PARTY_NOTICES.md` updated (a test checks it).
-- Process separation (utility process, tree kill) is not OS confinement; Windows Job Objects and
-  restricted tokens are backlog item D2. Do not describe the worker as a sandbox.
+- Engines run confined on Windows (D2, `infra/Confinement.cjs`, `native/confine/morph-confine.c`):
+  every call goes through `ToolRegistry.run`, never `runProcess` with a bare tool path. Engines
+  get a copy of the input inside the job workspace and write only there; never pass them an
+  original or an output folder. A new engine needs an entry in `domain/confinementPolicy.cjs`
+  chosen from a Windows measurement (`test/windows/confinement.test.cjs`), not assumed.
+- Say exactly what each tier protects. AppContainer engines: no network, files only as granted.
+  Low-integrity engines (LibreOffice, Calibre): no writes to user files, but reads and network
+  are open. The Job Object alone is lifetime and limits, not confinement. The utility-process
+  workers (sharp, detection) are separate processes, not OS-confined. Never call any of it a sandbox
+  without these qualifiers, and never fall back to unconfined silently.
 
 ## Keep changes reviewable
 
