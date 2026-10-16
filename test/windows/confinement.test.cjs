@@ -63,7 +63,10 @@ test('confinement is enforced and every engine passed its probe confined', opts,
 // the Low-integrity tier without administrator rights (CreateWindowStation, error 5), so LibreOffice
 // and Calibre were unavailable to every non-elevated user, while elevated CI runners passed.
 // `runas /trustlevel:0x20000` starts the probe with a Basic User token (Administrators deny-only,
-// no password), so this holds on an elevated runner too.
+// no password). On the CI runner (UAC off) that token stays at High integrity (measured in run
+// 38938189813), so the probe runs from a copy of node.exe labelled Medium: Windows starts a process
+// at the lower of its parent's integrity and its executable's label, which gives the probe (and the
+// helper it starts) the Medium, Administrators-deny-only token of a non-elevated desktop user.
 test('LibreOffice and Calibre start confined from a non-elevated (Basic User) token', opts, async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'morph-basic-user-'));
   const file = (n) => path.join(dir, n);
@@ -76,11 +79,14 @@ const { createStack } = require(${JSON.stringify(require.resolve('../electron/en
   catch (e) { fs.writeFileSync(${JSON.stringify(file('probe.json'))}, JSON.stringify({ error: String(e && e.stack) })); }
   finally { S.stop(); }
 })();`);
-  fs.writeFileSync(file('run.cmd'), ['@echo off', `"${process.execPath}" "${file('probe.cjs')}" > "${file('log.txt')}" 2>&1`, `echo done > "${file('done.txt')}"`, ''].join('\r\n'));
+  const mediumNode = file('node-medium.exe');
+  fs.copyFileSync(process.execPath, mediumNode);
+  execFileSync('icacls', [mediumNode, '/setintegritylevel', 'medium'], { stdio: 'ignore' });
+  fs.writeFileSync(file('run.cmd'), ['@echo off', `"${mediumNode}" "${file('probe.cjs')}" > "${file('log.txt')}" 2>&1`, `echo done > "${file('done.txt')}"`, ''].join('\r\n'));
   execFileSync('runas', ['/trustlevel:0x20000', `"\\"${file('run.cmd')}\\""`], { windowsVerbatimArguments: true, stdio: 'ignore' });
   assert.ok(await until(() => fs.existsSync(file('done.txt')), 180000, 500), 'the Basic User run finished');
   const groups = fs.readFileSync(file('groups.csv'), 'utf8');
-  assert.match(groups, /Medium Mandatory Level/, 'the probe ran at Medium integrity (not elevated)');
+  assert.match(groups, /Medium Mandatory Level/, `the probe ran at Medium integrity (not elevated); it ran at: ${(groups.match(/Mandatory Label\\([^"]+)/) || [])[1]}`);
   assert.doesNotMatch(groups, /"BUILTIN\\Administrators","[^"]*","[^"]*","Mandatory group, Enabled/, 'Administrators is not enabled in that token');
   const r = JSON.parse(fs.readFileSync(file('probe.json'), 'utf8'));
   console.log('Basic User probe:', JSON.stringify(r));
