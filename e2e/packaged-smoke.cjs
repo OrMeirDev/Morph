@@ -62,8 +62,12 @@ async function main() {
   // Windows keeps userData under APPDATA; Linux (used to check this script) under XDG_CONFIG_HOME.
   const env = { ...process.env, APPDATA: appdata, XDG_CONFIG_HOME: appdata };
   const extra = (opt('--extra-args') || '').split(' ').filter(Boolean);
+  // On Windows, Electron finds userData through the shell's known folder, not the APPDATA variable:
+  // without this switch a "fresh temporary" profile was the user's real %APPDATA%\Morph (measured
+  // on a desktop: test conversions in the user's history, the history migrated to v1).
+  const userData = path.join(appdata, 'Morph');
   const t0 = Date.now();
-  const child = spawn(exe, [`--remote-debugging-port=${PORT}`, ...extra], { env, stdio: 'ignore', detached: false });
+  const child = spawn(exe, [`--remote-debugging-port=${PORT}`, `--user-data-dir=${userData}`, ...extra], { env, stdio: 'ignore', detached: false });
   let page;
   try {
     page = await findPage(PORT);
@@ -109,6 +113,8 @@ async function main() {
       check(`${r.engine}: ${path.extname(r.path)} -> ${r.target}`, valid, `${r.result.state} ${why} ${r.result.output || ''}`.trim());
     }
     const history = await c.evaluate('window.morph.getHistory()');
+    const onDisk = (() => { try { const h = JSON.parse(fs.readFileSync(path.join(userData, 'history.json'), 'utf8')); return (h.entries || h).length; } catch { return -1; } })();
+    check('the app used the chosen profile (history written under it)', onDisk === history.length, `${userData}: ${onDisk} entries on disk, ${history.length} reported`);
     check('history recorded by main for each conversion', history.length === historyBefore.length + results.filter((r) => r.result.state === 'completed').length && history.slice(0, results.length).every((h) => h.exists), history.length);
     const csp = await c.evaluate('window.__cspViolations');
     const cspLog = c.events.filter((e) => e.method === 'Log.entryAdded' && /Content Security Policy/i.test(e.params?.entry?.text || '')).map((e) => e.params.entry.text);

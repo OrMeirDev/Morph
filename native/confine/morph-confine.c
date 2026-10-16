@@ -26,7 +26,7 @@
 //                          but traverse dropped, Administrators deny-only. Windows then refuses
 //                          writes to anything not labelled Low (all normal user files); reads and
 //                          the network are NOT restricted in this mode. The engine runs on a
-//                          window station and desktop of its own (see privateDesktop)
+//                          desktop of its own (see privateDesktop)
 //   --console new|detached|inherit  the engine's console: a new hidden one (default), none, or this
 //                          process's
 //   --read <path>          AppContainer: grant read + execute on <path> (inherited by children)
@@ -204,7 +204,9 @@ static int forEachProfile(const wchar_t *prefix, int remove) {
     wchar_t moniker[256];
     DWORD size = sizeof moniker;
     if (RegGetValueW(root, sub, L"Moniker", RRF_RT_REG_SZ, NULL, moniker, &size) != ERROR_SUCCESS) continue;
-    if (!wcsncmp(moniker, prefix, wcslen(prefix))) wcscpy_s(names[n++], 256, moniker);
+    // Windows stores monikers in lower case ("Morph.Job.X" is registered as "morph.job.x", measured):
+    // a case-sensitive match found nothing, so the start-up sweep never removed a leftover profile.
+    if (!_wcsnicmp(moniker, prefix, wcslen(prefix))) wcscpy_s(names[n++], 256, moniker);
   }
   RegCloseKey(root);
   for (int i = 0; i < n; i++) {
@@ -407,12 +409,19 @@ static DWORD activeProcesses(HANDLE job) {
   return acct.ActiveProcesses;
 }
 
-// Low-integrity engines get a window station and desktop of their own, as Chromium's sandbox gives
-// its restricted processes, so they cannot reach the user's windows, and only this user (not
-// Administrators, which is deny-only in the token), the restricted-code SID and SYSTEM may use
-// them; labelled Low so the engine may write to them. (Added while chasing 0xC0000142 at start-up:
-// that turned out to be the console, see --console in confinementPolicy.cjs; the engines start on
-// this desktop, run 38733280447.) The handles stay open until this process exits.
+// Low-integrity engines get a desktop of their own outside the user's window station (WinSta0), as
+// Chromium's sandbox gives its restricted processes, so they cannot reach the user's windows, and
+// only this user (not Administrators, which is deny-only in the token), the restricted-code SID and
+// SYSTEM may use it; labelled Low so the engine may write to it. (Added while chasing 0xC0000142 at
+// start-up: that turned out to be the console, see --console in confinementPolicy.cjs; the engines
+// start on this desktop, run 38733280447.) The handles stay open until this process exits.
+//
+// The window station is the logon session's unnamed one ("Service-0x0-<luid>$"), created on first
+// use and opened by later helpers, as Chromium does: Windows refuses to create a NAMED window
+// station without administrator rights (error 5 for a standard user or a filtered administrator
+// token, measured on Windows 11 26H2; elevated CI runners could, which hid it), and that left
+// LibreOffice and Calibre unavailable to every non-elevated user. Each helper's desktop has a
+// unique name, so engines of different jobs still never share one.
 static HWINSTA gWinsta;
 static HDESK gDesktop;
 static int privateDesktop(HANDLE token, wchar_t *name, size_t cap) {
@@ -432,14 +441,20 @@ static int privateDesktop(HANDLE token, wchar_t *name, size_t cap) {
     return 0;
   }
   SECURITY_ATTRIBUTES sa = { sizeof sa, sd, FALSE };
-  wchar_t station[64];
-  swprintf(station, 64, L"Morph.Engine.%lu.%llu", GetCurrentProcessId(), GetTickCount64());
-  gWinsta = CreateWindowStationW(station, 0, GENERIC_ALL, &sa);
+  gWinsta = CreateWindowStationW(NULL, 0, GENERIC_ALL, &sa);
   if (!gWinsta) {
     setError("CreateWindowStation", GetLastError());
     LocalFree(sd);
     return 0;
   }
+  wchar_t station[96];
+  if (!GetUserObjectInformationW(gWinsta, UOI_NAME, station, sizeof station, NULL)) {
+    setError("GetUserObjectInformation(window station name)", GetLastError());
+    LocalFree(sd);
+    return 0;
+  }
+  wchar_t desk[64];
+  swprintf(desk, 64, L"Morph.Engine.%lu.%llu", GetCurrentProcessId(), GetTickCount64());
   // A desktop is created in the calling process's window station: switch to the new one briefly.
   HWINSTA mine = GetProcessWindowStation();
   if (!SetProcessWindowStation(gWinsta)) {
@@ -447,7 +462,7 @@ static int privateDesktop(HANDLE token, wchar_t *name, size_t cap) {
     LocalFree(sd);
     return 0;
   }
-  gDesktop = CreateDesktopW(L"Default", NULL, NULL, 0, GENERIC_ALL, &sa);
+  gDesktop = CreateDesktopW(desk, NULL, NULL, 0, GENERIC_ALL, &sa);
   DWORD err = GetLastError();
   SetProcessWindowStation(mine);
   LocalFree(sd);
@@ -455,7 +470,10 @@ static int privateDesktop(HANDLE token, wchar_t *name, size_t cap) {
     setError("CreateDesktop", err);
     return 0;
   }
-  swprintf(name, cap, L"%ls\\Default", station);
+  if (swprintf(name, cap, L"%ls\\%ls", station, desk) < 0) {
+    setError("desktop name too long", ERROR_INSUFFICIENT_BUFFER);
+    return 0;
+  }
   return 1;
 }
 
@@ -574,7 +592,7 @@ int wmain(int argc, wchar_t **argv) {
   }
   HANDLE token = NULL;
   PSID writeSid = NULL, readSid = NULL;
-  wchar_t desktop[96] = { 0 };
+  wchar_t desktop[192] = { 0 };
   if (o.lowIntegrity) {
     ULONGLONG t0 = GetTickCount64();
     if (o.restrictWrites) {

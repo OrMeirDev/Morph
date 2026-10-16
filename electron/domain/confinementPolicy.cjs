@@ -52,7 +52,9 @@ const tools = {
 // any stress peak leaves less than 2x headroom. Override for diagnostics or unusually large files:
 // MORPH_CONFINE_LIMITS='{"soffice":{"jobMemoryMb":4096}}'.
 const limits = {
-  // 4K H.264 encode 1634 MiB (VP9 1200 MiB); 2 processes
+  // 4K H.264 encode 1634 MiB (VP9 1200 MiB); 2 processes. x264's memory follows its thread count:
+  // uncapped 4202 MiB on a 28-thread desktop, so the adapter caps it at 16 threads (2395 MiB there)
+  // rather than this limit growing with the machine.
   ffmpeg: { jobMemoryMb: 6656, maxProcesses: 16 },
   ffprobe: { jobMemoryMb: 1024, maxProcesses: 16 },
   // 128 MiB into .7z: 380 MiB. Floor set by the format instead: LZMA/LZMA2 decompression needs the

@@ -6,7 +6,7 @@
 // --strict: exit 1 if a mode the shipped policy uses fails, or a job profile is left behind.
 // Variants the policy does not use are reported for information only. CI runs this from PowerShell
 // on purpose: there the engines share a service's window station, the context in which Low-integrity
-// engines once failed with 0xC0000142 (now each gets a private window station and desktop).
+// engines once failed with 0xC0000142 (now each gets a private desktop of its own).
 const { spawnSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');

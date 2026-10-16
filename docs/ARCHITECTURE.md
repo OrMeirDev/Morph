@@ -114,7 +114,7 @@ Every call (`ToolRegistry.run` / the image worker → `infra/Confinement.cjs` �
 | Tier | Runs | Files | Network |
 | --- | --- | --- | --- |
 | AppContainer, no capabilities, one identity **per job** | ffmpeg, ffprobe, 7-Zip, Poppler, the image worker (sharp/libvips, heic-convert, pdf-lib, imagetracerjs as Electron in node mode), the detection worker (file-type, GIF reader; same runtime, an empty workspace of its own, never given the original: see below) | read: Morph's own folders through one capability (`morph.engines.read`: `bin\`, Morph's code and runtime); write: only that job's workspace (granted to the job's own AppContainer SID). Enforced through NTFS ACLs, so **not on FAT32/exFAT** | none; loopback included |
-| Low integrity (restricted token: privileges dropped, Administrators deny-only, default DACL for the user and SYSTEM; a private window station and desktop) | LibreOffice, Calibre | write: refused to anything labelled Medium (normal user files) — allowed in the job workspace and the LibreOffice profile (labelled Low) **and in any other Low-labelled folder** (measured: Calibre wrote into `%USERPROFILE%\AppData\LocalLow`); read: **anything the user can read** | **not restricted** |
+| Low integrity (restricted token: privileges dropped, Administrators deny-only, default DACL for the user and SYSTEM; a private desktop outside the user's window station) | LibreOffice, Calibre | write: refused to anything labelled Medium (normal user files) — allowed in the job workspace and the LibreOffice profile (labelled Low) **and in any other Low-labelled folder** (measured: Calibre wrote into `%USERPROFILE%\AppData\LocalLow`); read: **anything the user can read** | **not restricted** |
 
 Measured for the AppContainer tier: a canary outside the workspace is not overwritten; reading an
 original outside the workspace fails; code in the image worker's container gets EPERM reading or
@@ -139,8 +139,14 @@ until the helper has exited, reads its statistics and lets its final outcome dec
 
 Per-job identity: the helper registers the job's AppContainer profile (Windows refuses to start a
 process in an unregistered one: error 2, measured) and deletes it on exit; if the helper is killed,
-Morph deletes it after the process closed; at start-up Morph sweeps profiles a crash left. Measured:
-no job profile is left after the test runs. Grants and labels are added only to folders Morph owns.
+Morph deletes it after the process closed; at start-up Morph sweeps profiles a crash left. When
+Morph itself dies, the helper dies with it (Node and Electron put their children in a kill-on-close
+job), so the crashed job's profile stays registered until that sweep (measured). Windows stores
+profile names in lower case; until the helper matched them case-insensitively, `--list-profiles`
+and `--sweep-profiles` saw none, so the sweep removed nothing and the earlier "no profile left"
+results were not evidence (found on a Windows 11 desktop, where 8 leftovers had accumulated).
+Measured since: a crash leaves its job's profile and the next start's sweep removes it; no profile
+is left after normal exit, Stop or a helper kill. Grants and labels are added only to folders Morph owns.
 
 Why LibreOffice and Calibre are not in the AppContainer (measured): a LibreOffice conversion with
 a new profile never returns there (runs 38680593398, 38753883753); Calibre (and Electron without
@@ -162,8 +168,14 @@ and Calibre's worker could not connect to its pipe (WinError 5). The token now c
 DACL for the user and SYSTEM. The test steps run under Git Bash, whose runtime adds the user to
 the default DACL, so only the packaged app and the diagnostics (both started from PowerShell)
 showed it; the diagnostics now run real LibreOffice and Calibre conversions from PowerShell and
-fail the build if they do not convert. The private window station and desktop keep the engines
-away from the user's windows.
+fail the build if they do not convert. A private desktop keeps the engines away from the user's
+windows. It lives on the logon session's unnamed window station (`Service-0x0-<luid>$`, shared by
+the helpers of that session; each helper's desktop has its own name), not on a named station of
+its own: Windows refuses to create a named window station without administrator rights (error 5,
+measured on a Windows 11 desktop with a filtered administrator token), which made LibreOffice and
+Calibre unavailable to every non-elevated user while the elevated CI runners passed.
+`test/windows/confinement.test.cjs` now probes both engines from a Basic User token
+(`runas /trustlevel:0x20000`), so an elevated runner covers this too.
 
 Modes, shown on the settings page and in `tools:status`: `enforced`; `unavailable` (helper missing
 → engines refused, never run unconfined); `disabled` (`MORPH_CONFINEMENT=off`, diagnostics);

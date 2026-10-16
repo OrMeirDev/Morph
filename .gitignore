@@ -11,3 +11,6 @@ native/out/
 confinement-measurements.json
 isolation-measurements.json
 confine-diagnose.json
+
+# Engine downloads cached by scripts/fetch-engines.cjs (hundreds of MB).
+.cache/

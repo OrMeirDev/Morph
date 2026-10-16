@@ -64,8 +64,9 @@ bundled-engines job allows none.
 | Bundled engines (Windows): in-app auto-update (updated-app smoke 21/21) | 19 | 0 | — |
 
 Also in that run: imports and module boundaries; build; no test hook in the bundle; runtime
-`npm audit` 0; confinement diagnostics `--strict` from PowerShell (every shipped mode converts,
-0 job profiles left); payload identical to `bin-manifest.json` before and after the tests; signing
+`npm audit` 0; confinement diagnostics `--strict` from PowerShell (every shipped mode converts;
+"0 job profiles left" was not evidence: the listing then matched profile names case-sensitively and
+could see none, see `docs/LOCAL-WINDOWS-VALIDATION.he.md`); payload identical to `bin-manifest.json` before and after the tests; signing
 selection (`Morph.exe`, `morph-confine.exe`, installer, uninstaller, `elevate.exe`; nothing from
 `resources\bin`); signature check **pending** (both `NotSigned`, no certificate).
 
@@ -116,7 +117,7 @@ PowerShell, the context Morph itself starts from; the tests from Git Bash). Evid
 | AppContainer: canary outside the workspace, original, network | **Pass**: canary not overwritten; original EPERM to read and write; loopback ETIMEDOUT with 0 connections at the server; ffmpeg cannot reach 127.0.0.1 or the internet while the host can |
 | Jobs isolated from each other | **Pass**: pdfinfo and the image worker of job B refused job A's live workspace |
 | Detection confined | **Pass**: same answers as reading the file (Hebrew names, corpus files, animated GIF); the worker runs under `morph-confine.exe` and its command line names no file |
-| No AppContainer profile left behind | **Pass**: 0 after normal exit, kill and cancel |
+| No AppContainer profile left behind | **Not evidence in that run** (the listing could not see lower-case monikers). Re-measured locally after the fix: none left after normal exit, Stop and a helper kill; a crash of Morph leaves its job's profile, removed by the next start's sweep (`docs/LOCAL-WINDOWS-VALIDATION.he.md`) |
 | Low integrity: writes into another Low folder (LocalLow) | **Open (measured gap)**: Calibre wrote into `LocalLow` |
 | Low integrity, write-restricted token | **Not shippable**: LibreOffice 0xC0000142, Calibre hangs |
 | Low integrity, read-restricted token | **Not shippable**: user-profile canary refused and `C:\Windows\win.ini` readable (as intended), but LibreOffice hangs and Calibre cannot create folders in its temp folder |

@@ -25,19 +25,24 @@ function vcvars() {
   const install = execFileSync(vswhere, ['-latest', '-products', '*', '-requires', 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64', '-property', 'installationPath'], { encoding: 'utf8' }).trim();
   const bat = path.join(install, 'VC', 'Auxiliary', 'Build', 'vcvars64.bat');
   if (!install || !fs.existsSync(bat)) throw new Error('MSVC x64 tools not found (install "Desktop development with C++")');
-  return bat;
+  // vcvars64.bat (VS 2026) runs vswhere.exe through PATH; outside CI it is not there, and the
+  // "not recognized" line used to be recorded as the compiler version.
+  const env = { ...process.env, PATH: `${path.dirname(vswhere)};${process.env.PATH || ''}` };
+  return { bat, env };
 }
 
 function buildMsvc() {
-  const bat = vcvars();
+  const { bat, env } = vcvars();
   fs.mkdirSync(OUT_DIR, { recursive: true });
   const obj = path.join(OUT_DIR, 'morph-confine.obj');
   const cmd = `call "${bat}" >nul && cl ${CL_FLAGS.join(' ')} /Fo"${obj}" /Fe"${OUT}" "${SRC}" ${LINK_FLAGS.join(' ')}`;
-  const r = spawnSync('cmd.exe', ['/d', '/s', '/c', `"${cmd}"`], { stdio: 'inherit', windowsVerbatimArguments: true });
+  const r = spawnSync('cmd.exe', ['/d', '/s', '/c', `"${cmd}"`], { stdio: 'inherit', windowsVerbatimArguments: true, env });
   if (r.status !== 0) throw new Error(`cl failed (${r.status})`);
   fs.rmSync(obj, { force: true });
-  const ver = spawnSync('cmd.exe', ['/d', '/s', '/c', `"call "${bat}" >nul && cl"`], { encoding: 'utf8', windowsVerbatimArguments: true });
-  return (ver.stderr || '').split(/\r?\n/)[0].trim();
+  const ver = spawnSync('cmd.exe', ['/d', '/s', '/c', `"call "${bat}" >nul && cl"`], { encoding: 'utf8', windowsVerbatimArguments: true, env });
+  const compiler = (ver.stderr || '').split(/\r?\n/).find((l) => /Compiler Version/.test(l));
+  if (!compiler) throw new Error(`could not read the compiler version from cl: ${(ver.stderr || '').trim().slice(0, 300)}`);
+  return compiler.trim();
 }
 
 function buildMingw() {

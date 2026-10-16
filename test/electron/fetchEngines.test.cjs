@@ -4,7 +4,8 @@ const fs = require('fs');
 const path = require('path');
 const http = require('http');
 const crypto = require('crypto');
-const { validateLock, obtain, pickRelease, trimLibreOffice, stripAdminImage } = require('../../scripts/fetch-engines.cjs');
+const { spawnSync } = require('child_process');
+const { validateLock, obtain, pickRelease, trimLibreOffice, stripAdminImage, extract } = require('../../scripts/fetch-engines.cjs');
 const { tmpDir } = require('./helpers.cjs');
 
 const sha = (b) => crypto.createHash('sha256').update(b).digest('hex');
@@ -121,6 +122,22 @@ test('the copy of the package an administrative install leaves at the top is rem
   assert.deepEqual(stripAdminImage(x), ['LibreOffice_26.2.6.3_Win_x86-64.msi']);
   assert.deepEqual(fs.readdirSync(x), ['program']);
   assert.deepEqual(fs.readdirSync(path.join(x, 'program')).sort(), ['inner.msi', 'soffice.exe']);
+});
+
+// Measured on a desktop: from Git Bash a bare `tar.exe` is GNU tar, which reads `C:\...` as a host.
+// (Windows' bsdtar itself cannot open archive paths outside the ANSI code page, so ASCII names here;
+// the engine downloads are ASCII and are extracted under %TEMP%.)
+test('zip extraction uses Windows\' own tar, whatever PATH holds (Git Bash)', { skip: process.platform !== 'win32' && 'Windows only' }, () => {
+  const src = tmpDir('zip src');
+  fs.writeFileSync(path.join(src, 'engine file.txt'), 'engine');
+  const zip = path.join(tmpDir('zip pkg'), 'engine package.zip');
+  const sysTar = path.join(process.env.SystemRoot, 'System32', 'tar.exe');
+  assert.equal(spawnSync(sysTar, ['-a', '-cf', zip, '-C', src, '.']).status, 0);
+  const dest = path.join(tmpDir('zip out'), 'engine dest');
+  const savedPath = process.env.PATH;
+  process.env.PATH = tmpDir('empty path'); // nothing named tar.exe or msiexec.exe here
+  try { extract(zip, 'zip', dest); } finally { process.env.PATH = savedPath; }
+  assert.equal(fs.readFileSync(path.join(dest, 'engine file.txt'), 'utf8'), 'engine');
 });
 
 test('the committed payload manifest contains no administrative-install package copy', () => {

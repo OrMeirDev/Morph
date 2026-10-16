@@ -21,6 +21,17 @@ test('tool probes ran', async () => {
   assert.equal(s.images, true, 'sharp loads in the worker');
 });
 
+// x264's memory follows its thread count, which follows the core count unless capped (measured:
+// 4202 MiB at 4K on a 28-thread desktop vs a 6656 MiB job limit); the cap keeps it host-independent.
+test('H.264 targets cap x264 at 16 threads, whatever the machine', () => {
+  const { ffmpegArgs } = require('../../electron/adapters/ffmpegAdapter.cjs');
+  for (const t of ['mp4', 'mov', 'mkv']) {
+    const a = ffmpegArgs(t, { quality: 'high' });
+    const n = Number(a[a.indexOf('-threads') + 1]);
+    assert.ok(a.includes('-threads') && n >= 1 && n <= 16, `${t}: ${a.join(' ')}`);
+  }
+});
+
 test('MOR-01: an image cancelled at once ends cancelled and writes nothing', { timeout: 120000 }, async () => {
   await tools.probe();
   assert.ok(has('images'), `image conversion available: ${tools.images.reason}`);

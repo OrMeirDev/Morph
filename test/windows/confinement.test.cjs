@@ -16,6 +16,7 @@ const { createWorkspace } = require('../../electron/infra/JobWorkspace.cjs');
 const { Confinement } = require('../../electron/infra/Confinement.cjs');
 const { binRoots } = require('../../electron/infra/ToolRegistry.cjs');
 const policy = require('../../electron/domain/confinementPolicy.cjs');
+const { ffmpegArgs } = require('../../electron/adapters/ffmpegAdapter.cjs');
 
 const BIN = path.join(__dirname, '..', '..', 'bin');
 const HELPER = path.join(__dirname, '..', '..', 'native', 'out', 'morph-confine.exe');
@@ -56,6 +57,54 @@ test('confinement is enforced and every engine passed its probe confined', opts,
   assert.equal(st.confinement.mode, 'enforced', st.confinement.reason);
   for (const [name, d] of Object.entries(st.details)) assert.ok(d.ok, `${name}: ${d.reason}`);
   console.log('confinement per tool:', JSON.stringify(st.confinement.tools));
+});
+
+// Measured on a Windows 11 26H2 desktop: the helper could not create a NAMED window station for
+// the Low-integrity tier without administrator rights (CreateWindowStation, error 5), so LibreOffice
+// and Calibre were unavailable to every non-elevated user, while elevated CI runners passed.
+// `runas /trustlevel:0x20000` starts the probe with a Basic User token (Administrators deny-only,
+// no password), so this holds on an elevated runner too.
+test('LibreOffice and Calibre start confined from a non-elevated (Basic User) token', opts, async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'morph-basic-user-'));
+  const file = (n) => path.join(dir, n);
+  fs.writeFileSync(file('probe.cjs'), `const fs = require('fs');
+fs.writeFileSync(${JSON.stringify(file('groups.csv'))}, require('child_process').execFileSync(${JSON.stringify(path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'whoami.exe'))}, ['/groups', '/fo', 'csv'], { encoding: 'utf8' }));
+const { createStack } = require(${JSON.stringify(require.resolve('../electron/engineStack.cjs'))});
+(async () => {
+  const S = createStack('basic-user');
+  try { await S.tools.probe(); const st = S.tools.status(); fs.writeFileSync(${JSON.stringify(file('probe.json'))}, JSON.stringify({ mode: st.confinement.mode, soffice: st.details.soffice, calibre: st.details.calibre })); }
+  catch (e) { fs.writeFileSync(${JSON.stringify(file('probe.json'))}, JSON.stringify({ error: String(e && e.stack) })); }
+  finally { S.stop(); }
+})();`);
+  fs.writeFileSync(file('run.cmd'), ['@echo off', `"${process.execPath}" "${file('probe.cjs')}" > "${file('log.txt')}" 2>&1`, `echo done > "${file('done.txt')}"`, ''].join('\r\n'));
+  execFileSync('runas', ['/trustlevel:0x20000', `"\\"${file('run.cmd')}\\""`], { windowsVerbatimArguments: true, stdio: 'ignore' });
+  assert.ok(await until(() => fs.existsSync(file('done.txt')), 180000, 500), 'the Basic User run finished');
+  const groups = fs.readFileSync(file('groups.csv'), 'utf8');
+  assert.match(groups, /Medium Mandatory Level/, 'the probe ran at Medium integrity (not elevated)');
+  assert.doesNotMatch(groups, /"BUILTIN\\Administrators","[^"]*","[^"]*","Mandatory group, Enabled/, 'Administrators is not enabled in that token');
+  const r = JSON.parse(fs.readFileSync(file('probe.json'), 'utf8'));
+  console.log('Basic User probe:', JSON.stringify(r));
+  assert.equal(r.mode, 'enforced', r.error);
+  assert.ok(r.soffice?.ok, `LibreOffice: ${r.soffice?.reason}`);
+  assert.ok(r.calibre?.ok, `Calibre: ${r.calibre?.reason}`);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// Windows stores AppContainer monikers in lower case; a case-sensitive prefix match made the
+// start-up sweep (and the "no profile left" checks built on --list-profiles) see nothing (measured:
+// 8 leftover morph.job.* profiles, 0 listed). The registry is read directly here, not through the helper.
+test('the helper lists and sweeps job profiles whatever case Windows stored them in', opts, () => {
+  const name = `Morph.Job.CaseTest${process.pid}x${Date.now()}`;
+  const monikers = () => ps("$m='HKCU:\\Software\\Classes\\Local Settings\\Software\\Microsoft\\Windows\\CurrentVersion\\AppContainer\\Mappings'; @(Get-ChildItem $m | ForEach-Object { (Get-ItemProperty $_.PSPath).Moniker }) -join \"`n\"").split(/\r?\n/);
+  ps(`Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public static class MorphAc { [DllImport("userenv.dll", CharSet=CharSet.Unicode)] public static extern int CreateAppContainerProfile(string n, string d, string s, IntPtr c, int k, out IntPtr sid); }'; $sid=[IntPtr]::Zero; [MorphAc]::CreateAppContainerProfile('${name}', '${name}', '${name}', [IntPtr]::Zero, 0, [ref]$sid) | Out-Null`);
+  try {
+    assert.ok(monikers().some((m) => m.toLowerCase() === name.toLowerCase()), 'the profile is registered');
+    const listed = execFileSync(HELPER, ['--list-profiles', 'Morph.Job.'], { encoding: 'utf8' }).split(/\r?\n/).map((s) => s.trim().toLowerCase());
+    assert.ok(listed.includes(name.toLowerCase()), `--list-profiles Morph.Job. finds it: ${listed.length} listed`);
+    const swept = execFileSync(HELPER, ['--sweep-profiles', name.slice(0, -4)], { encoding: 'utf8' }).trim(); // only this test's profile
+    assert.equal(swept, '1');
+    assert.ok(!monikers().some((m) => m.toLowerCase() === name.toLowerCase()), 'the sweep removed it from the registry');
+  } finally { execFileSync(HELPER, ['--delete-profile', name], { stdio: 'ignore' }); }
 });
 
 test('a confined engine cannot write outside its workspace: the OS denies it (canary unchanged)', opts, async () => {
@@ -141,9 +190,14 @@ test('a confined engine has no network: loopback and internet both fail, while t
     const before = hits;
     await assert.rejects(run('ffmpeg', ['-hide_banner', '-nostdin', '-rw_timeout', '5000000', '-i', url, '-f', 'null', '-'], ws));
     assert.equal(hits, before, 'the confined engine never reached the loopback server');
-    const internet = await fetch('https://www.example.com/', { signal: AbortSignal.timeout(15000) }).then((r) => r.status, () => null);
-    assert.ok(internet, 'control: the host itself reaches the internet (else this test proves nothing)');
-    const e = await run('ffmpeg', ['-hide_banner', '-nostdin', '-rw_timeout', '8000000', '-i', 'https://www.example.com/', '-f', 'null', '-'], ws).then(() => null, (x) => x);
+    // The first of these the host reaches is the control and the target (one fixed host is not
+    // reachable everywhere: www.example.com did not resolve on a desktop where github.com did).
+    let target = null;
+    for (const u of ['https://www.example.com/', 'https://github.com/', 'https://www.microsoft.com/']) {
+      if (await fetch(u, { signal: AbortSignal.timeout(15000) }).then((r) => r.status, () => null)) { target = u; break; }
+    }
+    assert.ok(target, 'control: the host itself reaches the internet (else this test proves nothing)');
+    const e = await run('ffmpeg', ['-hide_banner', '-nostdin', '-rw_timeout', '8000000', '-i', target, '-f', 'null', '-'], ws).then(() => null, (x) => x);
     assert.ok(e, 'the confined engine could not fetch from the internet');
     assert.doesNotMatch(e.message, /Server returned|Invalid data found/, `no HTTP response reached it: ${e.message}`);
   } finally { server.close(); await ws.cleanup(); }
@@ -277,8 +331,10 @@ async function stress(name, tool, fn) {
   } finally { await ws.cleanup(); }
 }
 
+// The adapter's own arguments (incl. its x264 thread cap): a hand-copied list hid that x264's
+// memory follows the core count (4202 MiB uncapped on a 28-thread desktop, measured).
 test('stress: ffmpeg 4K H.264 encode (adapter settings)', opts, () => stress('ffmpeg-4k-h264', 'ffmpeg', (ws) => run('ffmpeg',
-  ['-hide_banner', '-nostdin', '-y', '-f', 'lavfi', '-i', 'testsrc2=s=3840x2160:r=30', '-frames:v', '30', '-c:v', 'libx264', '-preset', 'medium', '-crf', '24', '-pix_fmt', 'yuv420p', ws.file('4k.mp4')], ws, { timeoutMs: 540000 })));
+  ['-hide_banner', '-nostdin', '-y', '-f', 'lavfi', '-i', 'testsrc2=s=3840x2160:r=30', '-frames:v', '30', ...ffmpegArgs('mp4', { quality: 'medium' }), ws.file('4k.mp4')], ws, { timeoutMs: 540000 })));
 
 test('stress: ffmpeg 4K VP9 encode (adapter settings)', opts, () => stress('ffmpeg-4k-vp9', 'ffmpeg', (ws) => run('ffmpeg',
   ['-hide_banner', '-nostdin', '-y', '-f', 'lavfi', '-i', 'testsrc2=s=3840x2160:r=30', '-frames:v', '10', '-c:v', 'libvpx-vp9', '-crf', '34', '-b:v', '0', '-row-mt', '1', '-pix_fmt', 'yuv420p', ws.file('4k.webm')], ws, { timeoutMs: 540000 })));

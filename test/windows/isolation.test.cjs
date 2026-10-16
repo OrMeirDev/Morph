@@ -217,12 +217,22 @@ test('Morph dying during an image conversion takes the confined worker with it',
   const big = path.join(root, 'big.png');
   const w = 6000; const h = 4000;
   await sharp(require('crypto').randomBytes(w * h * 3), { raw: { width: w, height: h, channels: 3 } }).png({ compressionLevel: 0 }).toFile(big);
+  const listProfiles = () => execFileSync(HELPER, ['--list-profiles', 'Morph.Job.'], { encoding: 'utf8' }).trim();
+  assert.equal(listProfiles(), '', 'no job profile left over from an earlier test');
   const child = spawn(process.execPath, [path.join(__dirname, 'confined-child.cjs'), root, big, 'avif'], { stdio: ['ignore', 'pipe', 'inherit'] });
   const runtime = workerRuntime();
   const seen = await until(() => (processesOf(runtime.exe).length ? processesOf(runtime.exe) : null), 120000, 100);
   assert.ok(seen, 'the confined worker started in the child');
   execFileSync('taskkill', ['/pid', String(child.pid), '/F']);
   assert.deepEqual(await until(() => (processesOf(runtime.exe).length === 0 ? [] : null), 15000, 200), [], 'no worker outlived Morph');
+  // Node and Electron put their children in a kill-on-close job, so the helper dies with the crashed
+  // process before it can delete its job's AppContainer profile (measured: no stats written, one
+  // profile left). The next start's sweep removes it (main.cjs recoverInterruptedJobs).
+  const left = listProfiles();
+  record({ crashLeftProfiles: left ? left.split(/\r?\n/).length : 0 });
+  const swept = await S.tools.confinement.sweep();
+  assert.equal(swept, left ? left.split(/\r?\n/).length : 0, 'the start-up sweep removed every profile the crash left');
+  assert.equal(listProfiles(), '', 'no job profile after the start-up sweep');
 });
 
 test('file detection runs in the confined worker: same answers, the worker under the helper, never the path', opts, async () => {

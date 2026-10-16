@@ -1,10 +1,16 @@
 // Video, audio, GIF and APNG through ffmpeg. ffmpeg reads a copy of the input inside the job
 // workspace and writes its output there (the only folder it may write to, D2); publishing moves the
 // result to the destination.
+const os = require('os');
 const limits = require('../domain/limits.cjs');
 const { isCancelled } = require('../infra/errors.cjs');
 
 const CRF = { high: 20, medium: 24, small: 28 };
+// x264 starts ~1.5 threads per logical processor and its memory grows with them (~76 MiB per thread
+// at 4K): 4202 MiB on a 28-thread desktop, against 1634 MiB on the 4-vCPU CI runner, so a large
+// enough machine would hit the job's memory limit (domain/confinementPolicy.cjs). Capped at 16:
+// 2395 MiB there for +0.1 s per 30 4K frames (measured, test-results/local-windows).
+const X264_THREADS = String(Math.min(16, typeof os.availableParallelism === 'function' ? os.availableParallelism() : os.cpus().length || 1));
 
 async function probeDuration(ctx, input) {
   try {
@@ -26,7 +32,7 @@ function ffmpegArgs(target, { quality = 'high', maxHeight = null }) {
     case 'mp4':
     case 'mov':
     case 'mkv':
-      return ['-c:v', 'libx264', '-preset', 'medium', '-crf', String(crf), '-pix_fmt', 'yuv420p', ...vf([...scale, 'pad=ceil(iw/2)*2:ceil(ih/2)*2']),
+      return ['-c:v', 'libx264', '-preset', 'medium', '-crf', String(crf), '-threads', X264_THREADS, '-pix_fmt', 'yuv420p', ...vf([...scale, 'pad=ceil(iw/2)*2:ceil(ih/2)*2']),
         '-c:a', 'aac', '-b:a', '160k', ...(target === 'mkv' ? [] : ['-movflags', '+faststart'])];
     case 'webm':
       // GIF/APNG decode to palette/alpha pixel formats that VP9 rejects; force plain 4:2:0.

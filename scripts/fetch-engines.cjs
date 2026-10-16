@@ -148,14 +148,20 @@ function stripAdminImage(dir) {
   return removed;
 }
 
+// Windows' own tools by absolute path, never through PATH: from Git Bash, `tar.exe` is GNU tar,
+// which reads `C:\...` as a remote host ("Cannot connect to C: resolve failed").
+function windowsTool(name) {
+  return path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', name);
+}
+
 function extract(file, type, dest) {
   if (process.platform !== 'win32') throw new FetchError('extracting engines needs Windows (msiexec); use --download-only elsewhere');
   fs.mkdirSync(dest, { recursive: true });
   if (type === 'msi') {
-    run('msiexec.exe', ['/a', file, '/qn', `TARGETDIR=${dest}`]);
+    run(windowsTool('msiexec.exe'), ['/a', file, '/qn', `TARGETDIR=${dest}`]);
     stripAdminImage(dest);
   }
-  else if (type === 'zip') run('tar.exe', ['-xf', file, '-C', dest]); // bsdtar ships with Windows 10+
+  else if (type === 'zip') run(windowsTool('tar.exe'), ['-xf', file, '-C', dest]); // bsdtar ships with Windows 10+
   else throw new FetchError(`unknown download type ${type}`);
 }
 
@@ -265,4 +271,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { validateLock, obtain, download, sha256File, pickRelease, trimLibreOffice, stripAdminImage, FetchError, main };
+module.exports = { validateLock, obtain, download, sha256File, pickRelease, trimLibreOffice, stripAdminImage, extract, FetchError, main };
