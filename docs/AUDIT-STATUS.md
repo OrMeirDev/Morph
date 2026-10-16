@@ -67,6 +67,9 @@ audited source was unchanged). Branch: `claude/dazzling-johnson-3zccoi`.
 | F1 | Code signing (**Pending** until a real signature is verified). Ready: signing selection (only Morph's executables; engines keep their publishers' signatures), CI wiring for a .pfx or Azure Trusted Signing, signature check. Missing: certificate or Trusted Signing account + secrets, `MORPH_PUBLISHER` (`docs/RELEASING.md` §5) | Pending | owner: certificate and secrets | release approval; signed update verification | Release / M |
 | F2 | Decide whether a release ships or hosts the GPL/LGPL engines' corresponding source; notices list exact versions and source links | Ready | owner / legal | release approval | Release + legal / S |
 | F3 | After the first real release: let the previous published version auto-update from GitHub Releases on a clean VM | Planned | a published release (owner) | — | Release / S |
+| L1 | Local validation under a genuine standard (non-administrator) account; run 2026-10-16 was an unelevated administrator (`docs/LOCAL-WINDOWS-VALIDATION.he.md`) | **Pending** | a standard account (owner) | release approval | QA / S |
+| L2 | Installer over 1.0.3 and the in-app updater on a desktop, in a separate account or VM (cannot be isolated from the everyday per-user install) | **Pending** | separate account or VM (owner) | release approval | QA + Release / S |
+| L3 | The Basic User regression and the profile-sweep regression pass on the CI runners | Ready | a CI run on the PR | merge | CI / S |
 | U1 | Show "cancelled" text on a stopped row | Optional | — | — | Frontend / S |
 | U2 | Optional engine packs to reduce the ~590 MiB installer | Deferred | owner decision | — | Release / L |
 

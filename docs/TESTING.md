@@ -80,6 +80,17 @@ Evidence: the payload job's `windows-payload-evidence` artifact (`engines.resolv
 `smoke.json`, `installer.json`, `autoupdate.json`). Later commits on the branch change
 documentation only; the PR description names the run on the head commit.
 
+## Local Windows desktop (separate from CI)
+
+Windows 11 Pro 26H2 desktop, run **unelevated** (filtered administrator token, Medium integrity;
+not a genuine standard account), commit `0f2d970`: `npm test` 249 passed / 0 failed / 5 skipped
+(FAT32/exFAT/SMB need administrator-made volumes), confinement diagnostics 8/8 shipped modes,
+packaged smoke 20/20, packaged-app local check (`e2e/local-windows-check.cjs`) 46/46, e2e flow
+15/15. It found and fixed failures the elevated CI runners could not show (LibreOffice and Calibre
+unavailable to non-elevated users; the profile sweep matching nothing; x264 memory following the
+core count; the smoke test's "temporary" profile being the user's real one). Report, Pending items
+and owner actions: `docs/LOCAL-WINDOWS-VALIDATION.he.md`; evidence: `test-results/local-windows/`.
+
 ## Windows checks
 
 Tested commit 92ee37c, CI run 38766954377. GitHub `windows-latest` = Windows Server 2025 (image
