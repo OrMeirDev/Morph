@@ -1,0 +1,49 @@
+root C:\Users\or072\AppData\Local\Temp\morph-local-check-run3
+[pass] S1 app started (non-elevated session) :: version 1.0.4-local, pid 35852
+[pass] S2 engine verified: ffmpeg :: {"ok":true,"version":"9.0.2-essentials_build-www.gyan.dev","reason":null}
+[pass] S2 engine verified: images :: {"ok":true,"version":"0.35.5","heic":true,"reason":null}
+[pass] S2 engine verified: poppler :: {"sevenzip":{"ok":true,"version":"26.03","reason":null},"pdftoppm":{"ok":true,"version":"26.09.0","reason":null},"pdfinfo":{"ok":true,"version":"26.09.0","reason":null},"pdftotext":{"ok":true,"version":"26.09.0","reason":null},"calibre":{"ok":true,"version":"9.15.0","reason":null},"soffice":{"ok":true,"version":"26.2.6.3","reason":null},"ffprobe":{"ok":true,"version":"9.0.2-essentials_build-www.gyan.dev","reason":null},"ffmpeg":{"ok":true,"version":"9.0.2-essentials_build-www.gyan.dev","reason":null},"images":{"ok":true,"version":"0.35.5","heic":true,"reason":null}}
+[pass] S2 engine verified: libreoffice :: {"sevenzip":{"ok":true,"version":"26.03","reason":null},"pdftoppm":{"ok":true,"version":"26.09.0","reason":null},"pdfinfo":{"ok":true,"version":"26.09.0","reason":null},"pdftotext":{"ok":true,"version":"26.09.0","reason":null},"calibre":{"ok":true,"version":"9.15.0","reason":null},"soffice":{"ok":true,"version":"26.2.6.3","reason":null},"ffprobe":{"ok":true,"version":"9.0.2-essentials_build-www.gyan.dev","reason":null},"ffmpeg":{"ok":true,"version":"9.0.2-essentials_build-www.gyan.dev","reason":null},"images":{"ok":true,"version":"0.35.5","heic":true,"reason":null}}
+[pass] S2 engine verified: calibre :: {"ok":true,"version":"9.15.0","reason":null}
+[pass] S2 engine verified: sevenzip :: {"ok":true,"version":"26.03","reason":null}
+[pass] S3 confinement enforced :: {"mode":"enforced","reason":null,"tools":{"ffmpeg":"appcontainer","ffprobe":"appcontainer","sevenzip":"appcontainer","pdftoppm":"appcontainer","pdftotext":"appcontainer","pdfinfo":"appcontainer","soffice":"low-integrity","imageworker":"appcontainer","calibre":"low-integrity"},"notes":["LibreOffice and Calibre run at Low integrity: Windows refuses their writes to your normal (Medium-integrity) files, but not to Low-integrity folders such as LocalLow (measured) or to FAT32/exFAT drives; they can read your files and use the network.","File detection runs in an AppContainer worker that is never gi
+[pass] D1 detection worker runs under morph-confine.exe :: [{"pid":11864,"ppid":21208,"name":"Morph.exe","created":"2026-10-16T17:09:21.6168600Z","exe":"C:\\Users\\or072\\Desktop\\Claude\\Morph-wt-validate\\release\\win-unpacked\\Morph.exe"}]
+[pass] D2 classified by content: תמונה לבדיקה.png :: {"ok":true,"kind":"image","ext":"png","confidence":"content","renamed":null,"targets":["jpg","webp","avif","tiff","bmp","ico","gif","pdf","svg"]}
+[pass] D2 classified by content: תמונה בשם אחר.jpg :: {"ok":true,"kind":"image","ext":"png","confidence":"content","renamed":"jpg","targets":["jpg","webp","avif","tiff","bmp","ico","gif","pdf","svg"]}
+[pass] D2 classified by content: שיר בעברית.docx :: {"ok":true,"kind":"doc","ext":"docx","confidence":"content","renamed":null,"targets":["pdf","odt","rtf","txt","epub"]}
+[pass] D2 classified by content: נתוני אוכלוסייה.xlsx :: {"ok":true,"kind":"sheet","ext":"xlsx","confidence":"content","renamed":null,"targets":["pdf","ods","csv"]}
+[pass] D2 classified by content: אליס בארץ הפלאות.epub :: {"ok":true,"kind":"ebook","ext":"epub","confidence":"content","renamed":null,"targets":["pdf","mobi","azw3","docx","txt"]}
+[pass] D2 classified by content: ספר שירה.epub :: {"ok":true,"kind":"ebook","ext":"epub","confidence":"content","renamed":null,"targets":["pdf","mobi","azw3","docx","txt"]}
+[pass] D2 classified by content: טופס W9.pdf :: {"ok":true,"kind":"pdf","ext":"pdf","confidence":"content","renamed":null,"targets":["docx","jpg","png","epub","txt"]}
+[pass] D2 classified by content: צליל קצר.wav :: {"ok":true,"kind":"audio","ext":"wav","confidence":"content","renamed":null,"targets":["mp3","m4a","ogg","flac","opus","aac"]}
+[pass] D2 classified by content: סרטון קצר.mp4 :: {"ok":true,"kind":"video","ext":"mp4","confidence":"content","renamed":null,"targets":["mov","mkv","webm","avi","mp3","m4a","wav","ogg","flac","gif","apng"]}
+[pass] D2 classified by content: ארכיון לבדיקה.zip :: {"ok":true,"kind":"archive","ext":"zip","confidence":"content","renamed":null,"targets":["7z","tar","tar.gz"]}
+[pass] D3 renamed PNG (.jpg) flagged as renamed from .jpg :: {"renamed":"jpg","ext":"png"}
+[pass] C1 sharp: PNG -> WEBP (Hebrew name, spaces) :: תמונה לבדיקה.webp in 1083 ms: webp 64x48 alpha=true
+[pass] C2 LibreOffice: Hebrew DOCX -> PDF :: שיר בעברית.pdf in 7964 ms: every poem line present, in order
+[pass] C3 LibreOffice: XLSX -> CSV :: נתוני אוכלוסייה.csv in 1389 ms: 69 lines, Alabama with population figures
+[pass] C4 Calibre: EPUB -> MOBI :: אליס בארץ הפלאות.mobi in 2948 ms: BOOKMOBI, 456519 bytes, title read back: Alice's Adventures in Wonderland
+[pass] C5 Calibre: Hebrew EPUB -> DOCX :: ספר שירה.docx in 1488 ms: Hebrew text present; paragraph RTL (w:bidi) absent: the documented Calibre limitation (E4)
+[pass] C6 Poppler: PDF -> TXT :: טופס W9.txt in 1083 ms: 54031 chars, "Request for Taxpayer" present
+[pass] C7 Poppler: Hebrew PDF -> PNG pages :: שיר כ-PDF - עמודים in 1390 ms: 2 PNG page(s) 1653x2339,1653x2339
+[pass] C8 FFmpeg: WAV -> MP3 :: צליל קצר.mp3 in 2032 ms: mp3 22050 Hz, 2.00 s
+[pass] C9 FFmpeg: MP4 -> WEBM :: סרטון קצר.webm in 2343 ms: vp9 320x240 + opus, 3.01 s
+[pass] C10 7-Zip: ZIP -> 7Z (Hebrew entry) :: ארכיון לבדיקה.7z in 1409 ms: 7z signature, Hebrew entry name and content intact
+[pass] C11 sharp: PNG -> WEBP in a long path (218 chars) :: תמונה בנתיב ארוך.webp in 1071 ms: webp 32x32 alpha=false
+[expected-limitation] C5b Calibre Hebrew -> DOCX paragraph direction :: E4: Calibre keeps the Hebrew text but not paragraph RTL; the app shows the limit note for this target
+[pass] C12 existing output name: a new free name, the old output untouched :: completed תמונה לבדיקה (1).webp
+[pass] U1 show output: an Explorer window opens on the output folder :: {"folder":"c:\\users\\or072\\appdata\\local\\temp\\morph-local-check-run3\\files\\קבצים עם רווחים"}
+[pass] U2 open refuses a file Morph did not produce (an original) :: not-a-morph-output
+[pass] X1 Stop during image conversion (confined image worker) :: {"target":"avif","state":"cancelled","stateAtStop":"converting","worker":[{"pid":16968,"ppid":39272,"name":"Morph.exe","created":"2026-10-16T17:09:48.0203830Z","exe":"C:\\Users\\or072\\Desktop\\Claude\\Morph-wt-validate\\release\\win-unpacked\\Morph.exe"}],"helper":{"pid":39272,"ppid":35852,"name":"morph-confine.exe","created":"2026-10-16T17:09:47.9884490Z","exe":"C:\\Users\\or072\\Desktop\\Claude\\Morph-wt-validate\\release\\win-unpacked\\resources\\native\\morph-confine.exe"},"owned":["morph-confine.exe:39272","conhost.exe:13672","Morph.exe:16968"],"left":[],"newFiles":[],"workspaceSeenDurin
+[pass] X1b Stop during image conversion (confined image worker): the next conversion works :: completed  תמונה בנתיב ארוך.jpg
+[pass] X2 Stop during LibreOffice conversion :: {"target":"pdf","state":"cancelled","stateAtStop":"converting","worker":[{"pid":40560,"ppid":32672,"name":"soffice.bin","created":"2026-10-16T17:09:49.9298540Z","exe":"C:\\Users\\or072\\Desktop\\Claude\\Morph-wt-validate\\release\\win-unpacked\\resources\\bin\\libreoffice\\program\\soffice.bin"}],"helper":{"pid":25916,"ppid":35852,"name":"morph-confine.exe","created":"2026-10-16T17:09:49.8840710Z","exe":"C:\\Users\\or072\\Desktop\\Claude\\Morph-wt-validate\\release\\win-unpacked\\resources\\native\\morph-confine.exe"},"owned":["morph-confine.exe:25916","conhost.exe:24232","soffice.com:32672","
+[pass] X2b Stop during LibreOffice conversion: the next conversion works :: completed  שיר בעברית.odt
+[pass] X3 Stop during Calibre conversion :: {"target":"pdf","state":"cancelled","stateAtStop":"converting","worker":[{"pid":24696,"ppid":17164,"name":"ebook-convert.exe","created":"2026-10-16T17:09:52.3625580Z","exe":"C:\\Users\\or072\\Desktop\\Claude\\Morph-wt-validate\\release\\win-unpacked\\resources\\bin\\calibre\\ebook-convert.exe"},{"pid":31596,"ppid":24696,"name":"calibre-parallel.exe","created":"2026-10-16T17:09:52.5170160Z","exe":"C:\\Users\\or072\\Desktop\\Claude\\Morph-wt-validate\\release\\win-unpacked\\resources\\bin\\calibre\\calibre-parallel.exe"}],"helper":{"pid":17164,"ppid":35852,"name":"morph-confine.exe","created":"2
+[pass] X3b Stop during Calibre conversion: the next conversion works :: completed  ספר שירה.txt
+[pass] P1 parent killed during LibreOffice: every descendant ends (helper parent watch) :: {"killed":35852,"descendants":["Morph.exe:6676","Morph.exe:28280","Morph.exe:37728","morph-confine.exe:21208","morph-confine.exe:38072","conhost.exe:21552","Morph.exe:11864","conhost.exe:39732","soffice.com:39188","conhost.exe:40328","soffice.bin:21996"],"left":[]}
+[pass] P2 next start recovers: journal cleared, workspaces swept, no partial output, converts :: {"journalBefore":1,"journalAfter":0,"workspacesBefore":2,"workspacesAfter":[],"stagingBefore":[],"leftoversAfter":[],"jobProfiles":{"beforeRelaunch":1,"afterRelaunch":0},"next":"completed "}
+[pass] D4 no Morph process (25 observed) was given an original path on its command line :: []
+[pass] R1 no AppContainer job profile left behind :: {"atStart":1,"atEnd":1}
+[pass] R3 the user's own Morph profile was not touched (C:\Users\or072\AppData\Roaming\Morph) :: []
+[pass] R2 every original kept its SHA-256 (16 files) :: []
+passed 46, failed 0

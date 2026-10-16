@@ -1,0 +1,12 @@
+﻿{
+ "soffice": {
+  "path": "C:\\Users\\or072\\Desktop\\Claude\\Morph-wt-validate\\bin\\libreoffice\\program\\soffice.com",
+  "ok": false,
+  "reason": "confinement-failed:soffice:CreateWindowStation failed (Windows error 5)"
+ },
+ "calibre": {
+  "path": "C:\\Users\\or072\\Desktop\\Claude\\Morph-wt-validate\\bin\\calibre\\ebook-convert.exe",
+  "ok": false,
+  "reason": "confinement-failed:calibre:CreateWindowStation failed (Windows error 5)"
+ }
+}

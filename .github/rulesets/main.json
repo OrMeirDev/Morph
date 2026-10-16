@@ -1,0 +1,14 @@
+{
+  "name": "main: pull requests and required CI",
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": { "ref_name": { "include": ["~DEFAULT_BRANCH"], "exclude": [] } },
+  "rules": [
+    { "type": "pull_request", "parameters": { "required_approving_review_count": 0, "dismiss_stale_reviews_on_push": false, "require_code_owner_review": false, "require_last_push_approval": false, "required_review_thread_resolution": false } },
+    { "type": "non_fast_forward" },
+    { "type": "required_status_checks", "parameters": { "strict_required_status_checks_policy": false, "required_status_checks": [
+      { "context": "Checks and engine matrix (Linux)", "integration_id": 15368 },
+      { "context": "Checks (Windows, no bundled engines)", "integration_id": 15368 },
+      { "context": "Bundled engines, packaged app and installer (Windows)", "integration_id": 15368 } ] } }
+  ]
+}

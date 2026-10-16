@@ -1,0 +1,107 @@
+{
+  "exe": "release/win-unpacked/Morph.exe",
+  "passed": 20,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "app window opened",
+      "ok": true,
+      "detail": "file:///C:/Users/or072/Desktop/Claude/Morph-wt-validate/release/win-unpacked/resources/app.asar/dist/index.html"
+    },
+    {
+      "name": "production CSP present",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no test hook in the production build",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "app version",
+      "ok": true,
+      "detail": "1.0.4-local (expected 1.0.4-local)"
+    },
+    {
+      "name": "engine verified: ffmpeg",
+      "ok": true,
+      "detail": "{\"sevenzip\":{\"ok\":true,\"version\":\"26.03\",\"reason\":null},\"pdftoppm\":{\"ok\":true,\"version\":\"26.09.0\",\"reason\":null},\"pdfinfo\":{\"ok\":true,\"version\":\"26.09.0\",\"reason\":null},\"pdftotext\":{\"ok\":true,\"version\":\"26.09.0\",\"reason\":null},\"calibre\":{\"ok\":true,\"version\":\"9.15.0\",\"reason\":null},\"soffice\":{\"ok\":true,\"version\":\"26.2.6.3\",\"reason\":null},\"ffprobe\":{\"ok\":true,\"version\":\"9.0.2-essentials_build-www.gyan.dev\",\"reason\":null},\"ffmpeg\":{\"ok\":true,\"version\":\"9.0.2-essentials_build-www.gyan.dev\",\"reason\":null},\"images\":{\"ok\":true,\"version\":\"0.35.5\",\"heic\":true,\"reason\":null}}"
+    },
+    {
+      "name": "engine verified: images",
+      "ok": true,
+      "detail": "{\"sevenzip\":{\"ok\":true,\"version\":\"26.03\",\"reason\":null},\"pdftoppm\":{\"ok\":true,\"version\":\"26.09.0\",\"reason\":null},\"pdfinfo\":{\"ok\":true,\"version\":\"26.09.0\",\"reason\":null},\"pdftotext\":{\"ok\":true,\"version\":\"26.09.0\",\"reason\":null},\"calibre\":{\"ok\":true,\"version\":\"9.15.0\",\"reason\":null},\"soffice\":{\"ok\":true,\"version\":\"26.2.6.3\",\"reason\":null},\"ffprobe\":{\"ok\":true,\"version\":\"9.0.2-essentials_build-www.gyan.dev\",\"reason\":null},\"ffmpeg\":{\"ok\":true,\"version\":\"9.0.2-essentials_build-www.gyan.dev\",\"reason\":null},\"images\":{\"ok\":true,\"version\":\"0.35.5\",\"heic\":true,\"reason\":null}}"
+    },
+    {
+      "name": "engine verified: poppler",
+      "ok": true,
+      "detail": "{\"sevenzip\":{\"ok\":true,\"version\":\"26.03\",\"reason\":null},\"pdftoppm\":{\"ok\":true,\"version\":\"26.09.0\",\"reason\":null},\"pdfinfo\":{\"ok\":true,\"version\":\"26.09.0\",\"reason\":null},\"pdftotext\":{\"ok\":true,\"version\":\"26.09.0\",\"reason\":null},\"calibre\":{\"ok\":true,\"version\":\"9.15.0\",\"reason\":null},\"soffice\":{\"ok\":true,\"version\":\"26.2.6.3\",\"reason\":null},\"ffprobe\":{\"ok\":true,\"version\":\"9.0.2-essentials_build-www.gyan.dev\",\"reason\":null},\"ffmpeg\":{\"ok\":true,\"version\":\"9.0.2-essentials_build-www.gyan.dev\",\"reason\":null},\"images\":{\"ok\":true,\"version\":\"0.35.5\",\"heic\":true,\"reason\":null}}"
+    },
+    {
+      "name": "engine verified: libreoffice",
+      "ok": true,
+      "detail": "{\"sevenzip\":{\"ok\":true,\"version\":\"26.03\",\"reason\":null},\"pdftoppm\":{\"ok\":true,\"version\":\"26.09.0\",\"reason\":null},\"pdfinfo\":{\"ok\":true,\"version\":\"26.09.0\",\"reason\":null},\"pdftotext\":{\"ok\":true,\"version\":\"26.09.0\",\"reason\":null},\"calibre\":{\"ok\":true,\"version\":\"9.15.0\",\"reason\":null},\"soffice\":{\"ok\":true,\"version\":\"26.2.6.3\",\"reason\":null},\"ffprobe\":{\"ok\":true,\"version\":\"9.0.2-essentials_build-www.gyan.dev\",\"reason\":null},\"ffmpeg\":{\"ok\":true,\"version\":\"9.0.2-essentials_build-www.gyan.dev\",\"reason\":null},\"images\":{\"ok\":true,\"version\":\"0.35.5\",\"heic\":true,\"reason\":null}}"
+    },
+    {
+      "name": "engine verified: calibre",
+      "ok": true,
+      "detail": "{\"sevenzip\":{\"ok\":true,\"version\":\"26.03\",\"reason\":null},\"pdftoppm\":{\"ok\":true,\"version\":\"26.09.0\",\"reason\":null},\"pdfinfo\":{\"ok\":true,\"version\":\"26.09.0\",\"reason\":null},\"pdftotext\":{\"ok\":true,\"version\":\"26.09.0\",\"reason\":null},\"calibre\":{\"ok\":true,\"version\":\"9.15.0\",\"reason\":null},\"soffice\":{\"ok\":true,\"version\":\"26.2.6.3\",\"reason\":null},\"ffprobe\":{\"ok\":true,\"version\":\"9.0.2-essentials_build-www.gyan.dev\",\"reason\":null},\"ffmpeg\":{\"ok\":true,\"version\":\"9.0.2-essentials_build-www.gyan.dev\",\"reason\":null},\"images\":{\"ok\":true,\"version\":\"0.35.5\",\"heic\":true,\"reason\":null}}"
+    },
+    {
+      "name": "engine verified: sevenzip",
+      "ok": true,
+      "detail": "{\"sevenzip\":{\"ok\":true,\"version\":\"26.03\",\"reason\":null},\"pdftoppm\":{\"ok\":true,\"version\":\"26.09.0\",\"reason\":null},\"pdfinfo\":{\"ok\":true,\"version\":\"26.09.0\",\"reason\":null},\"pdftotext\":{\"ok\":true,\"version\":\"26.09.0\",\"reason\":null},\"calibre\":{\"ok\":true,\"version\":\"9.15.0\",\"reason\":null},\"soffice\":{\"ok\":true,\"version\":\"26.2.6.3\",\"reason\":null},\"ffprobe\":{\"ok\":true,\"version\":\"9.0.2-essentials_build-www.gyan.dev\",\"reason\":null},\"ffmpeg\":{\"ok\":true,\"version\":\"9.0.2-essentials_build-www.gyan.dev\",\"reason\":null},\"images\":{\"ok\":true,\"version\":\"0.35.5\",\"heic\":true,\"reason\":null}}"
+    },
+    {
+      "name": "engines confined (AppContainer + Job Object)",
+      "ok": true,
+      "detail": "{\"mode\":\"enforced\",\"reason\":null,\"tools\":{\"ffmpeg\":\"appcontainer\",\"ffprobe\":\"appcontainer\",\"sevenzip\":\"appcontainer\",\"pdftoppm\":\"appcontainer\",\"pdftotext\":\"appcontainer\",\"pdfinfo\":\"appcontainer\",\"soffice\":\"low-integrity\",\"imageworker\":\"appcontainer\",\"calibre\":\"low-integrity\"},\"notes\":[\"LibreOffice and Calibre run at Low integrity: Windows refuses their writes to your normal (Medium-integrity) files, but not to Low-integrity folders such as LocalLow (measured) or to FAT32/exFAT drives; they can read your files and use the network.\",\"File detection runs in an AppContainer worker that is never given your file: Morph passes it only the byte ranges it asks for.\",\"FAT32/exFAT drives have no permissions: an engine can write anywhere on such a drive (measured, run 38684568676).\"]}"
+    },
+    {
+      "name": "sharp: .png -> webp",
+      "ok": true,
+      "detail": "completed  C:\\Users\\or072\\AppData\\Local\\Temp\\morph-smoke-files-qKmLWv\\קבצים עם שמות בעברית\\תמונה.webp"
+    },
+    {
+      "name": "ffmpeg: .wav -> mp3",
+      "ok": true,
+      "detail": "completed  C:\\Users\\or072\\AppData\\Local\\Temp\\morph-smoke-files-qKmLWv\\קבצים עם שמות בעברית\\צליל.mp3"
+    },
+    {
+      "name": "Poppler: .pdf -> png",
+      "ok": true,
+      "detail": "completed  C:\\Users\\or072\\AppData\\Local\\Temp\\morph-smoke-files-qKmLWv\\קבצים עם שמות בעברית\\מסמך.png"
+    },
+    {
+      "name": "LibreOffice: .odt -> pdf",
+      "ok": true,
+      "detail": "completed  C:\\Users\\or072\\AppData\\Local\\Temp\\morph-smoke-files-qKmLWv\\קבצים עם שמות בעברית\\מכתב.pdf"
+    },
+    {
+      "name": "Calibre: .epub -> mobi",
+      "ok": true,
+      "detail": "completed  C:\\Users\\or072\\AppData\\Local\\Temp\\morph-smoke-files-qKmLWv\\קבצים עם שמות בעברית\\ספר.mobi"
+    },
+    {
+      "name": "7-Zip: .zip -> 7z",
+      "ok": true,
+      "detail": "completed  C:\\Users\\or072\\AppData\\Local\\Temp\\morph-smoke-files-qKmLWv\\קבצים עם שמות בעברית\\ארכיון.7z"
+    },
+    {
+      "name": "the app used the chosen profile (history written under it)",
+      "ok": true,
+      "detail": "C:\\Users\\or072\\AppData\\Local\\Temp\\morph-smoke-appdata-tRLRt6\\Morph: 6 entries on disk, 6 reported"
+    },
+    {
+      "name": "history recorded by main for each conversion",
+      "ok": true,
+      "detail": "6"
+    },
+    {
+      "name": "no CSP violations",
+      "ok": true,
+      "detail": "[]"
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+ffmpeg: cached download verified
+ffmpeg 9.0.2: sha256 60f467265b1e312373dbcd92200c2618a74850f98d3d078e94296bb3fa2047ba (cache)
+7zip: downloading https://github.com/ip7z/7zip/releases/download/26.03/7z2603-x64.msi
+7zip 26.03: sha256 c0680064d698a62dd4a5a47f403db356a6531a5473e4c4b1d090ea2590513926
+poppler: downloading https://github.com/oschwartz10612/poppler-windows/releases/download/v26.09.0-0/Release-26.09.0-0.zip
+poppler v26.09.0-0: sha256 7a6f256a0ddf7536182246a5733331bf4677cbcc34f4663774947ad34556c8d0
+libreoffice: downloading https://downloadarchive.documentfoundation.org/libreoffice/old/26.2.6.3/win/x86_64/LibreOffice_26.2.6.3_Win_x86-64.msi
+libreoffice 26.2.6.3: sha256 f9877032fd908beb9c0ddf06df4af5c2e85f419c42e14876c4cce5aae5fb2660
+calibre: downloading https://download.calibre-ebook.com/9.15.0/calibre-64bit-9.15.0.msi
+calibre 9.15.0: sha256 0f96ae06165c2419607c1c66726c091a78e89e08ea69f077cf3e2c884e800853
+fetch exit 0

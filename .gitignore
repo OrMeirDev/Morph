@@ -1,8 +1,16 @@
 node_modules/
 dist/
 release/
+release-*/
 # ffmpeg, 7-Zip, Poppler, LibreOffice and Calibre are large third-party binaries; fetch them with `npm run fetch-bin`.
 bin/
 .claude/
 *.log
 e2e/output/
+native/out/
+confinement-measurements.json
+isolation-measurements.json
+confine-diagnose.json
+
+# Engine downloads cached by scripts/fetch-engines.cjs (hundreds of MB).
+.cache/

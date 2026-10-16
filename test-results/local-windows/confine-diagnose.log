@@ -1,0 +1,37 @@
+OK   ffmpeg -version (appcontainer): status=0 outcome=exited processes=2 
+OK   pdfinfo -v (appcontainer): status=0 outcome=exited processes=2 
+OK   7-Zip banner (appcontainer): status=0 outcome=exited processes=2 
+OK   soffice --version (low-integrity): status=0 outcome=exited privateDesktop processes=3 
+FAIL (not shipped) soffice --version (low-integrity, write-restricted): status=3221225794 outcome=exited privateDesktop processes=3 
+OK   ebook-convert --version (low-integrity): status=0 outcome=exited privateDesktop processes=2 
+FAIL (not shipped) ebook-convert --version (low-integrity, write-restricted): status=null outcome=undefined 
+OK   ebook-convert EPUB -> MOBI (low-integrity): status=0 outcome=exited privateDesktop processes=3 
+FAIL (not shipped) ebook-convert EPUB -> MOBI (low-integrity, write-restricted): status=null outcome=undefined 
+OK   (not shipped) variant: read user-profile canary (Low only, console new): status=0 outcome=exited privateDesktop processes=2 
+OK   (not shipped) variant: read user-profile canary (Low only, console inherit): status=0 outcome=exited privateDesktop processes=1 
+OK   (not shipped) variant: read user-profile canary (write-restricted, console new): status=0 outcome=exited privateDesktop processes=2 
+OK   (not shipped) variant: read user-profile canary (write-restricted, console inherit): status=0 outcome=exited privateDesktop processes=1 
+FAIL (not shipped) variant: read user-profile canary (read-restricted, console new): status=1 outcome=exited privateDesktop processes=2 stderr=Access is denied.
+FAIL (not shipped) variant: read user-profile canary (read-restricted, console inherit): status=1 outcome=exited privateDesktop processes=1 stderr=Access is denied.
+OK   (not shipped) variant: read C:\Windows\win.ini (Low only, console new): status=0 outcome=exited privateDesktop processes=2 
+OK   (not shipped) variant: read C:\Windows\win.ini (Low only, console inherit): status=0 outcome=exited privateDesktop processes=1 
+OK   (not shipped) variant: read C:\Windows\win.ini (write-restricted, console new): status=0 outcome=exited privateDesktop processes=2 
+OK   (not shipped) variant: read C:\Windows\win.ini (write-restricted, console inherit): status=0 outcome=exited privateDesktop processes=1 
+OK   (not shipped) variant: read C:\Windows\win.ini (read-restricted, console new): status=0 outcome=exited privateDesktop processes=2 
+OK   (not shipped) variant: read C:\Windows\win.ini (read-restricted, console inherit): status=0 outcome=exited privateDesktop processes=1 
+OK   (not shipped) variant: LibreOffice DOCX -> PDF (Low only, console new): status=0 outcome=exited privateDesktop processes=6 
+OK   (not shipped) variant: LibreOffice DOCX -> PDF (Low only, console inherit): status=0 outcome=exited privateDesktop processes=5 
+FAIL (not shipped) variant: LibreOffice DOCX -> PDF (write-restricted, console new): status=3221225794 outcome=exited privateDesktop processes=3 
+FAIL (not shipped) variant: LibreOffice DOCX -> PDF (write-restricted, console inherit): status=3221225794 outcome=exited privateDesktop processes=2 
+FAIL (not shipped) variant: LibreOffice DOCX -> PDF (read-restricted, console new): status=null outcome=undefined 
+FAIL (not shipped) variant: LibreOffice DOCX -> PDF (read-restricted, console inherit): status=null outcome=undefined 
+OK   (not shipped) variant: Calibre EPUB -> MOBI (Low only, console new): status=0 outcome=exited privateDesktop processes=3 
+OK   (not shipped) variant: Calibre EPUB -> MOBI (Low only, console inherit): status=0 outcome=exited privateDesktop processes=2 
+FAIL (not shipped) variant: Calibre EPUB -> MOBI (write-restricted, console new): status=null outcome=undefined 
+FAIL (not shipped) variant: Calibre EPUB -> MOBI (write-restricted, console inherit): status=null outcome=undefined 
+FAIL (not shipped) variant: Calibre EPUB -> MOBI (read-restricted, console new): status=1 outcome=exited privateDesktop processes=3 stderr=py", line 88, in _run_code File "site.py", line 83, in <module> File "site.py", line 78, in main File "site.py", line 50, in run_entry_point File "calibre\ebooks\conversion\cli.py", line 485, in main File "calibre\ebooks\conversion\plumber.py", line 1231, in run File "calibre\ptempfile.py", line 245
+FAIL (not shipped) variant: Calibre EPUB -> MOBI (read-restricted, console inherit): status=1 outcome=exited privateDesktop processes=2 stderr=py", line 88, in _run_code File "site.py", line 83, in <module> File "site.py", line 78, in main File "site.py", line 50, in run_entry_point File "calibre\ebooks\conversion\cli.py", line 485, in main File "calibre\ebooks\conversion\plumber.py", line 1231, in run File "calibre\ptempfile.py", line 245
+FAIL (not shipped) variant: LibreOffice DOCX -> PDF (AppContainer): status=null outcome=undefined 
+OK   image worker runtime: Electron as node in the AppContainer: status=0 outcome=exited processes=1 
+OK   image worker: probe request through the real worker (sharp loads in the AppContainer): status=0 outcome=exited processes=1 
+job profiles left by the runs above: 0

@@ -1,0 +1,243 @@
+# Required checks for every pull request and push to main (MOR-08). The owner marks all three jobs
+# as required status checks in a ruleset for main (exact names: docs/RELEASING.md §1).
+name: CI
+
+on:
+  pull_request:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: Checks and engine matrix (Linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Engines for the conversion matrix
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg poppler-utils p7zip-full \
+            libreoffice-writer libreoffice-calc libreoffice-impress calibre fonts-dejavu-core fonts-noto-core xvfb
+      - run: npm ci --ignore-scripts --no-fund --no-audit
+      - run: npm run check:imports
+      - run: npm test
+        env:
+          # Calibre's PDF output runs Qt WebEngine (Chromium); Ubuntu 24.04 restricts the
+          # unprivileged user namespaces its sandbox needs. Test environment only.
+          QTWEBENGINE_CHROMIUM_FLAGS: --no-sandbox
+      - name: The engine matrix must not have skipped silently
+        env:
+          QTWEBENGINE_CHROMIUM_FLAGS: --no-sandbox
+        run: npm run test:engines 2>&1 | tee engines.log; ! grep -E "# (no 7-Zip|no ffmpeg|no poppler|no LibreOffice|no Calibre)" engines.log
+      - run: npm run build
+      - name: Production bundle carries no test hook
+        run: "! grep -q __morphAdd dist/assets/*.js"
+      - name: Runtime dependency advisories (report)
+        run: npm audit --omit=dev --audit-level=high || echo "::warning::npm audit reports runtime advisories; see docs/DEPENDENCIES.md"
+      - name: End-to-end flow in Electron
+        run: |
+          node node_modules/electron/install.js
+          VITE_E2E_HOOKS=1 npx vite build
+          xvfb-run -a node_modules/electron/dist/electron --no-sandbox --disable-gpu e2e/conversion-flow.cjs
+
+  windows:
+    name: Checks (Windows, no bundled engines)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      # 7-Zip is preinstalled on GitHub's Windows images; the archive tests use it.
+      MORPH_TOOL_SEVENZIP: C:\Program Files\7-Zip\7z.exe
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts --no-fund --no-audit
+      - run: npm run check:imports
+      - name: Build the confinement helper (MSVC, D2)
+        run: node native/confine/build.cjs
+      - name: Electron binary (the confined image worker runs Electron in node mode)
+        run: node node_modules/electron/install.js
+      - name: Confinement diagnostics (each isolation mode run directly through the helper)
+        run: node scripts/confine-diagnose.cjs --strict
+      # Unit tests, sharp image matrix, 7-Zip archive tests (7-Zip confined in the AppContainer) and
+      # the process-tree tests run here; ffmpeg/Poppler/LibreOffice/Calibre directions skip without bin/.
+      - run: npm test
+        timeout-minutes: 20
+      - run: npm run build
+
+  windows-payload:
+    # The engine payload Morph ships, tested on Windows: fetched from scripts/engines.lock.json with
+    # every download hash-checked (fresh or cached), the full engine/document/e-book matrix and the
+    # Windows-only checks against it, then the packaged app and the installer (unsigned).
+    name: Bundled engines, packaged app and installer (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 180
+    env:
+      MORPH_REQUIRE_PAYLOAD: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts --no-fund --no-audit
+      # Restore and save are separate so the verified downloads are cached even when a later step
+      # fails; every cached file is hash-checked again by fetch-engines before use.
+      - uses: actions/cache/restore@v4
+        id: engines-cache
+        with:
+          path: .cache/engines
+          key: engines-${{ hashFiles('scripts/engines.lock.json') }}
+      - name: Fetch the pinned engine payload (every download hash-checked, fresh or cached)
+        run: node scripts/fetch-engines.cjs --require-pinned --resolve-out engines.resolved.json
+      - uses: actions/cache/save@v4
+        if: steps.engines-cache.outputs.cache-hit != 'true'
+        with:
+          path: .cache/engines
+          key: engines-${{ hashFiles('scripts/engines.lock.json') }}
+      - name: A tampered cached download is refused (real 7-Zip package, one byte appended)
+        shell: bash
+        run: |
+          mkdir -p tampered && cp .cache/engines/7zip-* tampered/ && printf 'x' >> tampered/7zip-*
+          if node scripts/fetch-engines.cjs --require-pinned --download-only --only 7zip --cache tampered 2> tamper.err; then
+            echo "::error::a tampered cached package was accepted"; exit 1
+          fi
+          cat tamper.err
+          grep -q "does not match the lock" tamper.err
+      - name: Record the payload (bin-manifest)
+        run: node scripts/bin-manifest.cjs record --out bin-manifest.ci.json
+      - name: Payload matches the committed bin-manifest.json
+        run: node scripts/bin-manifest.cjs verify
+      - name: Build the confinement helper (MSVC, D2)
+        run: node native/confine/build.cjs
+      - name: Electron binary (the confined image worker runs Electron in node mode)
+        run: node node_modules/electron/install.js
+      - name: Confinement diagnostics (each isolation mode run directly through the helper)
+        run: node scripts/confine-diagnose.cjs --out confine-diagnose.json --strict
+      - name: Prepare FAT32, exFAT and SMB test locations
+        shell: pwsh
+        run: |
+          foreach ($fs in @(@{n='fat32'; l='R'}, @{n='exfat'; l='S'})) {
+            $vhd = Join-Path $env:RUNNER_TEMP "$($fs.n).vhdx"
+            $script = "create vdisk file=`"$vhd`" maximum=512 type=expandable`nattach vdisk`ncreate partition primary`nformat fs=$($fs.n) quick label=MORPH`nassign letter=$($fs.l)`n"
+            $dp = Join-Path $env:RUNNER_TEMP "dp-$($fs.n).txt"
+            Set-Content -Path $dp -Value $script -Encoding ascii
+            diskpart /s $dp | Out-Host
+          }
+          New-Item -ItemType Directory -Force C:\morph-share | Out-Null
+          New-SmbShare -Name morphshare -Path C:\morph-share -FullAccess "$env:USERDOMAIN\$env:USERNAME" | Out-Host
+          "MORPH_TEST_FAT32=R:\" >> $env:GITHUB_ENV
+          "MORPH_TEST_EXFAT=S:\" >> $env:GITHUB_ENV
+          "MORPH_TEST_SMB=\\localhost\morphshare" >> $env:GITHUB_ENV
+          Get-Volume -DriveLetter R,S | Format-Table DriveLetter,FileSystem,Size | Out-Host
+      - name: Confinement on real Windows (D2) before the rest (fail fast; also part of npm test below)
+        timeout-minutes: 45
+        shell: bash
+        run: node --test --test-concurrency=1 --test-reporter=spec test/windows/confinement.test.cjs test/windows/isolation.test.cjs 2>&1 | tee confinement.log; test ${PIPESTATUS[0]} -eq 0
+      - name: Tests with the bundled engines (nothing may skip)
+        timeout-minutes: 75
+        shell: bash
+        run: |
+          npm test 2>&1 | tee test.log
+          ! grep -E "# (no 7-Zip|no ffmpeg|no poppler|no LibreOffice|no Calibre|needs Windows|MORPH_TEST_)" test.log
+      - name: The engines did not change their own files
+        run: node scripts/bin-manifest.cjs verify --out bin-manifest.ci.json
+      - name: Build the app and the installer (version 1.0.4-ci; signed only if a certificate is configured)
+        shell: bash
+        env:
+          # electron-builder signs when one of these is configured (owner action, docs/RELEASING.md §5);
+          # absent = unsigned and the signature step below reports Pending. Option A: a .pfx certificate.
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          # Option B: Azure Trusted Signing (service principal secrets + account variables).
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          TS_ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          TS_ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          TS_PROFILE: ${{ vars.AZURE_SIGNING_PROFILE }}
+          MORPH_PUBLISHER: ${{ vars.MORPH_PUBLISHER }}
+        run: |
+          npx vite build
+          SIGN=()
+          if [ -n "$TS_ENDPOINT" ]; then
+            SIGN=(-c.win.azureSignOptions.endpoint="$TS_ENDPOINT" -c.win.azureSignOptions.codeSigningAccountName="$TS_ACCOUNT"
+                  -c.win.azureSignOptions.certificateProfileName="$TS_PROFILE" -c.win.azureSignOptions.publisherName="$MORPH_PUBLISHER")
+          fi
+          npx electron-builder --win nsis --x64 --publish never -c.extraMetadata.version=1.0.4-ci "${SIGN[@]}" 2>&1 | tee build.log; test ${PIPESTATUS[0]} -eq 0
+      - name: Only Morph's own executables are sent for signing (never the third-party engines)
+        shell: bash
+        run: |
+          # electron-builder logs each file it sends to signing: "no code signing certificate configured,
+          # signing is skipped" without a certificate, "signing with signtool.exe" / "signing with Azure
+          # Trusted Signing" with one. "file signing skipped via signExts configuration" means it would
+          # NOT be signed even with a certificate, so those lines are excluded.
+          grep -E "no code signing certificate configured|signing with " build.log | grep -v "via signExts" \
+            | grep -oE '(path|file)=[^ ]+' | sed -E 's/^(path|file)=//' | sort -u | tee signed-files.txt
+          echo "--- excluded from signing:"; grep "via signExts" build.log || true
+          ! grep -iE 'resources.bin' signed-files.txt
+          for f in 'resources.native.morph-confine.exe' 'win-unpacked.Morph.exe' 'Morph-Setup-1\.0\.4-ci\.exe$' '__uninstaller\.exe'; do
+            grep -qiE "$f" signed-files.txt || { echo "not sent for signing: $f"; exit 1; }
+          done
+          test -f release/win-unpacked/resources/native/morph-confine.exe
+          test -f release/win-unpacked/resources/bin/ffmpeg/ffmpeg.exe   # engines still packaged (after-pack hook)
+      - name: Code signature (required once MORPH_PUBLISHER is set; reported as pending before)
+        shell: bash
+        run: node e2e/signature-check.cjs release/Morph-Setup-1.0.4-ci.exe release/win-unpacked/Morph.exe ${{ vars.MORPH_PUBLISHER && format('--publisher "{0}"', vars.MORPH_PUBLISHER) || '' }} --report signature.json
+      - name: Packaged app smoke test (win-unpacked)
+        run: node e2e/packaged-smoke.cjs release/win-unpacked/Morph.exe --expect-version 1.0.4-ci --report smoke.json
+      - name: Download the previous release (1.0.3)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download v1.0.3 --repo ${{ github.repository }} --pattern "Morph-Setup-1.0.3.exe" --dir old
+      - name: Install over 1.0.3, check the installed copy, uninstall
+        run: node e2e/installer-check.cjs old/Morph-Setup-1.0.3.exe release/Morph-Setup-1.0.4-ci.exe --new-version 1.0.4-ci --report installer.json
+      - name: Build two update-test versions (1.0.4 and 1.0.5) with a local update feed; never published
+        shell: bash
+        run: |
+          rm -rf release   # free disk: the installer checks above are done with it
+          for v in 1.0.4:release-update-old 1.0.5:release-update-new; do
+            MORPH_UPDATE_FEED=http://127.0.0.1:8765/ MORPH_VERSION=${v%%:*} MORPH_OUT=${v##*:} \
+              npx electron-builder --config e2e/update-feed.builder.cjs --win nsis --x64 --publish never
+            rm -rf "${v##*:}/win-unpacked"
+          done
+          ls -la release-update-old release-update-new
+      - name: In-app auto-update from the local feed, during a running conversion
+        timeout-minutes: 50
+        run: node e2e/autoupdate-check.cjs release-update-old/Morph-Setup-1.0.4.exe release-update-new --old-version 1.0.4 --new-version 1.0.5 --port 8765 --report autoupdate.json
+      - name: Evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-payload-evidence
+          path: |
+            engines.resolved.json
+            bin-manifest.ci.json
+            bin/ENGINES.json
+            test.log
+            smoke.json
+            signature.json
+            installer.json
+            autoupdate.json
+            confinement.log
+            confinement-measurements.json
+            isolation-measurements.json
+            confine-diagnose.json
+            signed-files.txt
+            native/out/morph-confine.json
+          if-no-files-found: warn

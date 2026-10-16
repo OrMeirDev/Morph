@@ -1,0 +1,24 @@
+[36mvite v7.3.6 [32mbuilding client environment for production...[36m[39m
+transforming...
+[32m✓[39m 1623 modules transformed.
+rendering chunks...
+computing gzip size...
+[2mdist/[22m[32mindex.html                       [39m[1m[2m  0.77 kB[22m[1m[22m[2m │ gzip:  0.40 kB[22m
+[2mdist/[22m[32massets/logo-lockup-fT68ksM-.svg  [39m[1m[2m157.39 kB[22m[1m[22m[2m │ gzip: 53.68 kB[22m
+[2mdist/[22m[35massets/index-BwOA44RA.css        [39m[1m[2m 35.13 kB[22m[1m[22m[2m │ gzip:  7.93 kB[22m
+[2mdist/[22m[36massets/index-CO_7OgP2.js         [39m[1m[2m198.05 kB[22m[1m[22m[2m │ gzip: 65.13 kB[22m
+[32m✓ built in 5.42s[39m
+  • electron-builder  version=26.17.0 os=10.0.26300
+  • loaded configuration  file=package.json ("build" field)
+  • executing @electron/rebuild  electronVersion=44.5.1 arch=x64 buildFromSource=false workspaceRoot=C:\Users\or072\Desktop\Claude\Morph-wt-validate projectDir=./ appDir=./
+  • installing native dependencies  arch=x64
+  • completed installing native dependencies
+  • packaging       platform=win32 arch=x64 electron=44.5.1 appOutDir=release\win-unpacked
+  • downloaded      label=electron progress=100%
+  • downloaded electron zip extracted successfully  output=C:\Users\or072\Desktop\Claude\Morph-wt-validate\release\win-unpacked
+  • searching for node modules  pm=npm searchDir=C:\Users\or072\Desktop\Claude\Morph-wt-validate
+  • duplicate dependency references  dependencies=["@emnapi/runtime@1.11.3","debug@4.4.3","token-types@6.1.2"]
+  • updating asar integrity executable resource  executablePath=release\win-unpacked\Morph.exe
+  • no code signing certificate configured, signing is skipped  path=release\win-unpacked\resources\native\morph-confine.exe
+  • engines copied outside the signing pipeline  to=release\win-unpacked\resources\bin
+  • no code signing certificate configured, signing is skipped  path=release\win-unpacked\Morph.exe

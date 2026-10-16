@@ -1,0 +1,327 @@
+
+> morph@1.0.3 test
+> node --test --test-concurrency=1 --test-reporter=spec "test/**/*.test.mjs" "test/**/*.test.cjs"
+
+✔ parses entries from a 7z -slt listing (header block skipped) (1.0936ms)
+✔ unsafe paths are rejected (0.1494ms)
+✔ links, encryption, depth, count, size and ratio budgets (39.4064ms)
+✔ a recorded payload verifies clean (11.153ms)
+✔ tampered, missing and extra files all fail verification (10.5633ms)
+✔ no manifest means no packaging (1.1421ms)
+✔ every advertised target has an adapter and requirements (0.7389ms)
+✔ targets depend on verified engine capabilities, not on the table alone (1.0031ms)
+✔ images need ffmpeg only for BMP/ICO, and HEIC needs its decoder (0.1241ms)
+✔ fidelity is stated for lossy-in-kind directions (0.0937ms)
+✔ an unknown direction has no capability (0.1065ms)
+✔ an AZW3 book is offered MOBI but not AZW3 (0.0719ms)
+✔ e-book -> DOCX carries its known limit (Hebrew paragraph direction) to the UI (0.1581ms)
+✔ byte-range detection gives the same answer as reading the file (91.144ms)
+✔ confined detector: same answers, and the worker is never given a path (177.6681ms)
+✔ confined detector: reads are bounded (per read and per file) and stay inside the file (266.7076ms)
+✔ confined detector: a missed deadline kills the worker; the next request starts a fresh one (172.7937ms)
+✔ confined detector: a missing file and a folder answer like detectFile (1.0895ms)
+✔ every tool has a confinement policy with a known isolation (1.5001ms)
+✔ not Windows: unconfined and reported as unsupported (not silent) (0.4213ms)
+✔ Windows without the helper: engines are refused with the reason, never run unconfined (0.7674ms)
+✔ MORPH_CONFINEMENT=off is reported as disabled (0.1381ms)
+✔ enforced: AppContainer, read only the engine folder, write only the workspace (+ given folders), parent watch (2.3044ms)
+✔ enforced: an engine outside Morph's folders gets no read grant (system folders are never modified) (1.3198ms)
+✔ enforced without a workspace is an error, not an unconfined run (0.4282ms)
+✔ helper outcomes become errors the UI understands (0.1146ms)
+✔ ProcessRunner: a limit reported by the helper fails the call even when the exit code is 0 (51.8155ms)
+✔ ProcessRunner: a successful confined call returns the helper's accounting (52.7269ms)
+✔ enforced, low-integrity engines: Low token, Low labels on the workspace and given folders, no read grants (1.8039ms)
+✔ low-integrity with restrictReads: job SID, --restrict-reads, read grant only on the engine's own folder (1.5665ms)
+✔ MORPH_CONFINE_LIMITS overrides only known tools with positive integers (0.1337ms)
+✔ per-job identity: two workspaces never share an AppContainer, the same workspace always maps to the same one (3.4048ms)
+✔ extra read folders are granted only inside Morph's folders (1.5548ms)
+✔ AppContainer calls register a per-job profile that is removed again (helper on exit, else cleanup) (1.9087ms)
+✔ a conversion publishes a verified output and records history after publication (33.941ms)
+✔ commands are validated: unknown file, unknown direction, duplicate active job (30.1684ms)
+✔ one job at a time, in arrival order (165.5174ms)
+✔ cancel before start: removed from the queue, never runs (40.7127ms)
+✔ cancel during work that ignores the signal: no output, no history, next job runs (MOR-01) (47.6134ms)
+✔ cancel immediately before publication: the artifact is discarded (16.6744ms)
+✔ Stop during publication, after the name is reserved but before the final rename: cancelled, nothing written (26.4905ms)
+✔ an adapter that honours the signal ends cancelled, and its partial output goes with the workspace (16.1713ms)
+✔ engines get a copy of the input inside the workspace, never the original (28.1002ms)
+✔ an output that is not the requested format is never published (18.6377ms)
+✔ engine failure leaves nothing behind and reports the engine message (17.1797ms)
+✔ a file changed after detection is refused before any work (8.7562ms)
+✔ settings are snapshotted at enqueue (30.1784ms)
+✔ Stop while the workspace is being prepared never starts the engine (16.2438ms)
+✔ cancelAll stops everything and resolves when idle (31.6545ms)
+✔ corpus files are the recorded ones (SHA-256 in SOURCES.md) and all are listed (3.3ms)
+✔ Hebrew poem DOCX -> PDF: every line in Hebrew, right-to-left text kept in order (11750.992ms)
+✔ Hebrew poem DOCX -> ODT: right-to-left paragraphs and the heading styles survive (1092.8565ms)
+✔ Hebrew poem DOCX -> TXT keeps the niqqud (838.6021ms)
+✔ Hebrew poem PDF -> TXT (Poppler) and -> PNG pages (1152.1798ms)
+✔ Hebrew poem EPUB -> DOCX and -> TXT (Calibre): Hebrew text kept; paragraph RTL is the known limit (1503.4685ms)
+✔ IRS W-9 PDF (6 pages, form fields) -> TXT, -> JPG pages, -> DOCX (3752.7474ms)
+✔ Census XLSX (styled table, merged headers) -> CSV and -> ODS keep the numbers (1806.9438ms)
+✔ Gutenberg EPUB (12 chapters, cover image) -> TXT, -> AZW3 and -> PDF (6582.3524ms)
+✔ the corpus files were not modified by any conversion (1.1003ms)
+✔ GIF frames are counted structurally (10.9645ms)
+✔ a single-frame GIF whose comment holds 0x21 0xF9 pairs is still single-frame (40.5689ms)
+✔ a truncated GIF is an error, not an endless read (2.3831ms)
+✔ content wins over the name, and the rename is reported (40.874ms)
+✔ a name-only match says so (1.9674ms)
+✔ a zip named .docx is treated as a document (container confidence) (2.5725ms)
+✔ unknown content with an unknown name is unsupported; folders are refused (6.7238ms)
+✔ classify keeps tar.gz as an archive (0.1395ms)
+✔ AZW3/AZW (Mobipocket family) keep their name: no false "renamed" warning, MOBI still offered (0.2911ms)
+✔ docs/FORMATS.md matches the conversion registry (run node scripts/format-matrix.cjs) (1.5336ms)
+✔ THIRD_PARTY_NOTICES.md names every bundled engine at the version and URL the lock pins (0.5787ms)
+✔ document -> DOCX keeps Hebrew RTL, bold and the table (9451.2814ms)
+✔ document -> PDF: two pages, Hebrew and table text (761.3581ms)
+✔ DOCX -> ODT keeps the table and the right-to-left paragraph (918.9865ms)
+✔ document -> RTF keeps the table, bold and Hebrew (655.9249ms)
+✔ document -> text: words only, UTF-8 Hebrew, no markup (642.7425ms)
+✔ document -> EPUB: valid package with the Hebrew text (670.4014ms)
+✔ spreadsheet -> XLSX keeps both sheets, the formula and its value (628.3614ms)
+✔ spreadsheet -> CSV: first sheet only, computed values (594.7762ms)
+✔ spreadsheet -> PDF shows the computed value and the Hebrew label (838.5018ms)
+✔ presentation -> PPTX keeps three slides and their text (698.9837ms)
+✔ presentation -> PDF: one page per slide (730.6515ms)
+✔ PPTX -> ODP keeps three slides (738.2886ms)
+✔ e-book -> text: every block, in order, Hebrew intact, no markup (2025.3808ms)
+✔ e-book -> DOCX: headings, bold, list, Hebrew text and book metadata (690.7674ms)
+ℹ Hebrew paragraph right-to-left in DOCX: false
+✔ e-book -> PDF: text in order, Hebrew, title metadata (2326.2288ms)
+✔ e-book -> MOBI: Mobipocket 6 container that reads back as the same book (1422.8244ms)
+✔ e-book -> AZW3 (KF8), detected as AZW3, and AZW3 -> EPUB reads back the book (1435.3798ms)
+✔ PDF -> EPUB: a valid book with the page text (1140.3462ms)
+engines here: {"pdfinfo":"26.09.0","sevenzip":"26.03","pdftotext":"26.09.0","pdftoppm":"26.09.0","calibre":"9.15.0","soffice":"26.2.6.3","ffprobe":"9.0.2-essentials_build-www.gyan.dev","ffmpeg":"9.0.2-essentials_build-www.gyan.dev","images":"0.35.5"}
+✔ tool probes ran (1257.4599ms)
+✔ MOR-01: an image cancelled at once ends cancelled and writes nothing (141.8711ms)
+✔ MOR-01: cancelling during native image work kills the worker; no output, next job fine (1917.0432ms)
+▶ image matrix: PNG to every image target
+  ✔ jpg (1080.2671ms)
+  ✔ webp (1062.3214ms)
+  ✔ avif (1069.4868ms)
+  ✔ tiff (1088.751ms)
+  ✔ gif (1056.9374ms)
+  ✔ pdf (1145.6592ms)
+  ✔ svg (1065.9557ms)
+  ✔ bmp (1669.0337ms)
+  ✔ ico (1663.3064ms)
+✔ image matrix: PNG to every image target (10903.006ms)
+✔ BMP input goes through ffmpeg (2080.8613ms)
+▶ audio matrix
+  ✔ mp3 (1535.81ms)
+  ✔ m4a (1544.2047ms)
+  ✔ ogg (1543.7293ms)
+  ✔ flac (1548.7856ms)
+  ✔ opus (1599.3054ms)
+  ✔ aac (1600.1373ms)
+✔ audio matrix (9372.6558ms)
+▶ video matrix (odd dimensions, audio track)
+  ✔ mp4 (1587.736ms)
+  ✔ mov (1628.4607ms)
+  ✔ mkv (1685.0596ms)
+  ✔ webm (1678.5396ms)
+  ✔ avi (1650.6459ms)
+  ✔ mp3 (1639.9011ms)
+  ✔ m4a (1636.9574ms)
+  ✔ wav (1583.9039ms)
+  ✔ ogg (1648.0414ms)
+  ✔ flac (1604.9862ms)
+  ✔ gif (1609.6384ms)
+  ✔ apng (1623.7026ms)
+✔ video matrix (odd dimensions, audio track) (20271.2212ms)
+✔ audio to WAV is plain 16-bit PCM of the same length (1990.4366ms)
+▶ APNG to GIF, video and a single frame
+  ✔ gif (1581.4761ms)
+  ✔ mp4 (1607.382ms)
+  ✔ webm (1995.3231ms)
+  ✔ png (1689.0534ms)
+✔ APNG to GIF, video and a single frame (7236.0182ms)
+▶ SVG to raster images and PDF
+  ✔ png (1115.4647ms)
+  ✔ jpg (1114.3061ms)
+  ✔ webp (1132.4621ms)
+  ✔ pdf (1282.4972ms)
+✔ SVG to raster images and PDF (4645.4416ms)
+▶ animated GIF to video, APNG and a single frame
+  ✔ mp4 (1266.9013ms)
+  ✔ webm (1292.6471ms)
+  ✔ apng (1255.1038ms)
+  ✔ png (1224.4654ms)
+✔ animated GIF to video, APNG and a single frame (5415.387ms)
+✔ PDF: one page to one image, several pages to a folder, text (1799.1792ms)
+✔ Office: Hebrew RTL text survives text -> DOCX -> PDF, and a spreadsheet converts (10370.2073ms)
+✔ Office: PDF -> Word uses the PDF import filter (677.0849ms)
+▶ archives: zip repacks to 7z, tar and tar.gz with the same contents
+  ✔ 7z (896.2287ms)
+  ✔ tar (884.1957ms)
+  ✔ tar.gz (1143.2353ms)
+  ✔ tar.gz back to zip (inner tar opened) (2573.1686ms)
+✔ archives: zip repacks to 7z, tar and tar.gz with the same contents (5497.3407ms)
+✔ archives: traversal and link entries are refused before extraction (599.4192ms)
+✔ missing engines are not offered (calibre) (2.6228ms)
+✔ nothing is left in the job workspaces (4.4867ms)
+✔ the committed lock is valid and every engine is pinned to an https URL and a SHA-256 (1.1779ms)
+✔ lock validation: unpinned entries fail only with --require-pinned; bad hashes always fail (0.2651ms)
+✔ a fresh download is verified, cached, and the cache is re-verified on the next run (46.0101ms)
+✔ a download that does not match the pinned hash is rejected and not kept (6.1088ms)
+✔ a missing file on the host is a clear error (3.7378ms)
+✔ release resolution picks the newest stable release old enough, with a matching asset (0.3618ms)
+✔ LibreOffice trimming keeps English and Hebrew and the default icon theme (7.8062ms)
+✔ the copy of the package an administrative install leaves at the top is removed, nothing else (1.4464ms)
+✔ zip extraction uses Windows' own tar, whatever PATH holds (Git Bash) (43.7384ms)
+✔ the committed payload manifest contains no administrative-install package copy (12.6102ms)
+✔ job commands accept only a file ID and a known-shaped target (1.1601ms)
+✔ settings patches are typed per key (0.2211ms)
+✔ intake is bounded (0.145ms)
+✔ the router refuses other windows, sub-frames and other pages before the handler runs (0.7562ms)
+✔ every channel the preload exposes has a schema (0.4805ms)
+✔ publishes under the plain name, then numbered names; never overwrites (6.6616ms)
+✔ simultaneous publishes of the same name get distinct files (23.0448ms)
+✔ a cancel noticed at publish time leaves nothing behind (2.3335ms)
+✔ an artifact already staged in the output folder is renamed, not copied (5.6756ms)
+✔ page folders publish atomically under a free name (4.9063ms)
+✔ the original file is never a valid destination (5.1074ms)
+✔ recovery removes staging files and empty reservations but keeps real outputs (1.9521ms)
+✔ a cancel that lands during reservation, before the final rename, publishes nothing (file) (1.8821ms)
+✔ a cancel that lands during reservation, before the final rename, publishes nothing (page folder) (3.6978ms)
+✔ captures stdout and resolves on exit 0 (55.3724ms)
+✔ a non-zero exit rejects with the last stderr line (51.839ms)
+✔ a missing executable is a typed spawn failure, not a crash (1.2155ms)
+✔ the deadline ends a hung tool with a timeout error (408.7156ms)
+✔ runaway output keeps only a bounded tail (89.1158ms)
+✔ full stdout capture is bounded (60.3182ms)
+✔ progress lines are split on \r and \n (51.703ms)
+✔ an already-aborted signal never starts the tool (0.2659ms)
+✔ cancel ends the tool and its descendants (process group / taskkill /T) (460.7467ms)
+✔ settings: defaults, validated patches, and refused garbage (3.829ms)
+✔ settings: a corrupt file is set aside and defaults are used (5.654ms)
+✔ settings: version-0 values are kept one by one, invalid ones reset (4.538ms)
+✔ history: migrates the v0 bare array, adds, caps and answers hasOutput (16.5249ms)
+✔ writes are atomic: no temp files remain (98.2582ms)
+✔ job journal: records leftovers and hands back interrupted jobs once (14.7761ms)
+✔ the liveness check sees a running process and not the same PID after it ended (784.344ms)
+✔ normal completion returns the helper's real statistics, before success is reported (149.2377ms)
+✔ success cannot resolve while the helper is still alive (2120.9152ms)
+✔ a failed final helper outcome overrides an earlier successful reply (136.5311ms)
+✔ a helper that does not exit after the reply is killed at the deadline and the call fails (958.9129ms)
+✔ cancellation leaves no worker, no staging and no published output (2861.4783ms)
+✔ formatGroups intersects targets per kind and reports a shared or mixed current target (1.0142ms)
+✔ formatGroups drops a kind whose files share no target (0.0912ms)
+✔ conversionCounts counts pending, done, failed and total size (0.5511ms)
+✔ withTarget resets finished/failed rows to ready and keeps other states (0.1072ms)
+✔ applyGroupTarget skips active rows and rows that cannot reach the target (0.1131ms)
+✔ clearing finished rows keeps pending ones (0.1272ms)
+✔ saveWhereText names the last two folder levels (0.1532ms)
+✔ fmtSize uses binary multiples like Windows Explorer (0.5286ms)
+✔ baseName handles both separators (0.5321ms)
+✔ fmtLabel names office formats and upper-cases the rest (0.0909ms)
+✔ friendlyError maps engine messages to Hebrew (0.3ms)
+✔ the engine-isolation line is never silent about a missing protection (0.9013ms)
+✔ every known per-direction limit in the registry has a Hebrew note for the row (2.4939ms)
+✔ an ordinary wall time round-trips exactly (12.4024ms)
+✔ New York spring-forward gap: 02:30 does not exist and is never shown as 01:30 (1.0103ms)
+✔ New York fall-back fold: 01:30 happens twice; the earlier one is chosen and both are reported (0.458ms)
+✔ Jerusalem transitions (2026-03-27 forward, 2026-10-25 back) (0.5465ms)
+✔ day offset across month and year boundaries (0.9227ms)
+✔ length and weight factors (0.4716ms)
+✔ temperature conversions are affine (0.0938ms)
+✔ every linear unit round-trips through every other unit of its category (0.3428ms)
+✔ decimal and binary data units are distinct and labelled (0.1446ms)
+✔ month and year are labelled as averages of the Gregorian calendar (0.0709ms)
+probe results: {"sevenzip":{"ok":true,"version":"26.03","reason":null},"pdftoppm":{"ok":true,"version":"26.09.0","reason":null},"pdfinfo":{"ok":true,"version":"26.09.0","reason":null},"pdftotext":{"ok":true,"version":"26.09.0","reason":null},"calibre":{"ok":true,"version":"9.15.0","reason":null},"soffice":{"ok":true,"version":"26.2.6.3","reason":null},"ffprobe":{"ok":true,"version":"9.0.2-essentials_build-www.gyan.dev","reason":null},"ffmpeg":{"ok":true,"version":"9.0.2-essentials_build-www.gyan.dev","reason":null},"images":{"ok":true,"version":"0.35.5","heic":true,"reason":null}}
+confinement per tool: {"ffmpeg":"appcontainer","ffprobe":"appcontainer","sevenzip":"appcontainer","pdftoppm":"appcontainer","pdftotext":"appcontainer","pdfinfo":"appcontainer","soffice":"low-integrity","imageworker":"appcontainer","calibre":"low-integrity"}
+✔ confinement is enforced and every engine passed its probe confined (1218.7972ms)
+Basic User probe: {"mode":"enforced","soffice":{"ok":true,"version":"26.2.6.3","reason":null},"calibre":{"ok":true,"version":"9.15.0","reason":null}}
+✔ LibreOffice and Calibre start confined from a non-elevated (Basic User) token (2046.9605ms)
+✔ a confined engine cannot write outside its workspace: the OS denies it (canary unchanged) (70759.445ms)
+✔ a confined engine cannot read a file outside its workspace (the original), only the copy inside (688.2611ms)
+✖ a confined engine has no network: loopback and internet both fail, while the host can reach both (17250.7013ms)
+LibreOffice processes before the kill: 6952 soffice.com, 37356 soffice.bin
+✔ the job owns LibreOffice's descendants: killing only the helper ends soffice.com and soffice.bin (1600.8747ms)
+✔ Morph dying mid-conversion takes the engines with it; recovery leaves no staging; the next conversion works (10939.6622ms)
+✔ a memory limit stops the engine: job failed with limit-memory, nothing left, the next conversion works (17861.9557ms)
+Calibre processes before the kill: 41884 ebook-convert.exe, 38156 calibre-parallel.exe
+✔ Calibre's descendants belong to the job too (1578.9741ms)
+﹣ FAT32: can a confined engine write to a volume without ACLs? (measured and recorded) (0.1694ms) # MORPH_TEST_FAT32 not set
+﹣ exFAT: can a confined engine write to a volume without ACLs? (measured and recorded) (0.039ms) # MORPH_TEST_EXFAT not set
+MEASURED {"stress":"ffmpeg-4k-h264","tool":"ffmpeg","peakMiB":4202,"limitMiB":6656,"processes":2,"peakActive":2,"userMs":2421}
+✖ stress: ffmpeg 4K H.264 encode (adapter settings) (1129.2668ms)
+MEASURED {"stress":"ffmpeg-4k-vp9","tool":"ffmpeg","peakMiB":1370,"limitMiB":6656,"processes":2,"peakActive":2,"userMs":7343}
+✔ stress: ffmpeg 4K VP9 encode (adapter settings) (1955.9742ms)
+MEASURED {"stress":"soffice-big","tool":"soffice","peakMiB":461,"limitMiB":2048,"processes":6,"peakActive":5,"userMs":18125}
+✔ stress: LibreOffice 40,000-paragraph document to PDF (23379.822ms)
+MEASURED {"stress":"pdftoppm-a0-200dpi","tool":"pdftoppm","peakMiB":242,"limitMiB":1024,"processes":2,"peakActive":2,"userMs":1062}
+✔ stress: Poppler A0 page at 200 dpi (1362.7218ms)
+MEASURED {"stress":"sevenzip-128mib","tool":"sevenzip","peakMiB":380,"limitMiB":2048,"processes":2,"peakActive":2,"userMs":10187}
+✔ stress: 7-Zip 128 MiB into .7z at the default level (6433.0312ms)
+MEASURED {"stress":"calibre-big-pdf","tool":"calibre","peakMiB":1678,"limitMiB":5120,"processes":31,"peakActive":31,"userMs":13562}
+✔ stress: Calibre 120-chapter book to PDF (7979.4182ms)
+✔ the image worker runs confined: probe through the helper, conversions work (2422.3277ms)
+MEASURED {"workerContainer":{"readOriginal":"EPERM","writeOriginal":"EPERM","createOutside":"EPERM","writeInside":"allowed","loadSharp":"0.35.5","loopback":"ETIMEDOUT"},"serverHits":0}
+✔ code in the image worker's container: no original, no writes outside its workspace, no network (1368.7656ms)
+✔ Stop during an image conversion ends the confined worker; no output; the next one works (8479.6422ms)
+MEASURED {"stress":"imageworker-24mp-avif","pixels":24000000,"channels":3,"peakMiB":1181,"shippedLimitMiB":8704,"processes":1}
+✔ stress: image worker, 24 MP photo (6000x4000 RGB) to AVIF: shipped limit leaves 2x headroom (1576.8581ms)
+MEASURED {"stress":"imageworker-64mp-rgba-avif","pixels":64000000,"channels":4,"peakMiB":4187,"shippedLimitMiB":8704,"processes":1}
+✔ stress: image worker, 64 MP RGBA (8000x8000) to AVIF fits under the shipped limit (3039.9316ms)
+MEASURED {"crossJob":{"pdfinfo":"refused: I/O Error: Couldn't open file 'C:\\Users\\or072\\AppData\\Local\\Temp\\morph-test-win-","imageWorker":"EPERM"}}
+✔ jobs are isolated from each other: an engine in job B cannot read job A's live workspace (1696.3652ms)
+MEASURED {"lowTier":{"lowOnly":{"calibreWroteIntoLocalLow":true,"calibreConverts":true,"libreofficeConverts":"completed","probes":{"soffice":true,"calibre":true}},"writeRestricted":{"calibreWroteIntoLocalLow":false,"calibreConverts":false,"libreofficeConverts":"detected doc.odt: missing-tools","probes":{"soffice":false,"calibre":false}}}}
+✔ Low-integrity tier: writing into a pre-existing Low folder outside the workspace (measured, both variants) (70618.0285ms)
+✔ Morph dying during an image conversion takes the confined worker with it (6210.2692ms)
+MEASURED {"confinedDetection":{"workers":4,"parents":["C:\\nvm4w\\nodejs\\node.exe","C:\\nvm4w\\nodejs\\node.exe","C:\\Users\\or072\\Desktop\\Claude\\Morph-wt-validate\\native\\out\\morph-confine.exe","C:\\nvm4w\\nodejs\\node.exe"]}}
+MEASURED {"leftoverJobProfiles":0}
+✔ file detection runs in the confined worker: same answers, the worker under the helper, never the path (2530.06ms)
+✔ no job AppContainer profile is left behind (helpers ended normally, killed, or cancelled above) (17.4768ms)
+LibreOffice processes while converting: 8032 soffice.com, 40840 soffice.bin
+✔ Stop during a LibreOffice conversion ends soffice.com and soffice.bin; no output, no staging (11002.239ms)
+Calibre processes while converting: 27340 ebook-convert.exe, 20440 calibre-parallel.exe
+✔ Stop during a Calibre conversion ends ebook-convert and its helpers; no output (2729.802ms)
+✔ Office profile: a first start cancelled midway, then a damaged profile, both recover (17703.0072ms)
+✔ Office profile path at the 100-character limit works; over it falls back to the short path (17078.51ms)
+path length 200
+✔ Hebrew folder names and long paths through every engine (13670.2952ms)
+﹣ publication on FAT32: free names, no overwrite, no leftovers (0.1766ms) # MORPH_TEST_FAT32 not set
+﹣ publication on exFAT: free names, no overwrite, no leftovers (0.0646ms) # MORPH_TEST_EXFAT not set
+﹣ publication on SMB share: free names, no overwrite, no leftovers (0.0324ms) # MORPH_TEST_SMB not set
+ℹ tests 252
+ℹ suites 0
+ℹ pass 245
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 5
+ℹ todo 0
+ℹ duration_ms 477041.5136
+
+✖ failing tests:
+
+test at test\windows\confinement.test.cjs:159:1
+✖ a confined engine has no network: loopback and internet both fail, while the host can reach both (17250.7013ms)
+  AssertionError [ERR_ASSERTION]: control: the host itself reaches the internet (else this test proves nothing)
+      at TestContext.<anonymous> (C:\Users\or072\Desktop\Claude\Morph-wt-validate\test\windows\confinement.test.cjs:176:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+      at async Test.run (node:internal/test_runner/test:1054:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:744:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: null,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at test\windows\confinement.test.cjs:311:1
+✖ stress: ffmpeg 4K H.264 encode (adapter settings) (1129.2668ms)
+  AssertionError [ERR_ASSERTION]: ffmpeg-4k-h264: 4202 MiB peak leaves less than 2x headroom under the 6656 MiB limit
+      at stress (C:\Users\or072\Desktop\Claude\Morph-wt-validate\test\windows\confinement.test.cjs:307:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+      at async Test.run (node:internal/test_runner/test:1054:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:744:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+npm test exit 1

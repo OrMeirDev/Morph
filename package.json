@@ -5,36 +5,45 @@
   "author": "Or meir Tzarfati",
   "main": "electron/main.cjs",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "concurrently -k \"vite\" \"wait-on tcp:5174 && cross-env VITE_DEV=1 electron .\"",
     "build": "vite build",
     "start": "electron .",
-    "dist": "vite build && electron-builder --win nsis --x64",
-    "release": "vite build && electron-builder --win nsis --x64 --publish always",
-    "fetch-bin": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/fetch-bin.ps1",
+    "test": "node --test --test-concurrency=1 --test-reporter=spec \"test/**/*.test.mjs\" \"test/**/*.test.cjs\"",
+    "check:imports": "node scripts/check-imports.cjs",
+    "check": "npm run check:imports && npm test && npm run build",
+    "dist": "node scripts/bin-manifest.cjs verify && node native/confine/build.cjs && vite build && electron-builder --win nsis --x64",
+    "release": "node scripts/bin-manifest.cjs verify && node native/confine/build.cjs && npm run check && vite build && electron-builder --win nsis --x64 --publish always",
+    "fetch-bin": "node scripts/fetch-engines.cjs --require-pinned",
     "e2e:glass-menus": "vite build && electron e2e/glass-menus.cjs",
     "e2e:glass-pickers": "vite build && electron e2e/glass-pickers.cjs",
-    "e2e:screenshots": "vite build && electron e2e/screenshots.cjs"
+    "e2e:screenshots": "vite build && electron e2e/screenshots.cjs",
+    "e2e:flow": "cross-env VITE_E2E_HOOKS=1 vite build && electron e2e/conversion-flow.cjs",
+    "test:engines": "node --test --test-reporter=spec test/electron/engines.test.cjs test/electron/documents.test.cjs test/electron/ebooks.test.cjs",
+    "bin:record": "node scripts/bin-manifest.cjs record",
+    "bin:verify": "node scripts/bin-manifest.cjs verify",
+    "build:confine": "node native/confine/build.cjs"
   },
   "repository": "github:OrMeirDev/Morph",
   "dependencies": {
     "electron-updater": "^6.8.9",
-    "file-type": "^19.6.0",
+    "file-type": "^21.3.4",
     "heic-convert": "^2.1.0",
     "imagetracerjs": "^1.2.6",
     "pdf-lib": "^1.17.1",
-    "sharp": "^0.33.5"
+    "sharp": "^0.35.5"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "^4.3.4",
+    "@vitejs/plugin-react": "^5.2.0",
     "concurrently": "^9.1.0",
     "cross-env": "^7.0.3",
-    "electron": "^33.2.1",
-    "electron-builder": "^25.1.8",
+    "electron": "^44.5.1",
+    "electron-builder": "^26.17.0",
     "lucide-react": "^0.460.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "vite": "^5.4.11",
+    "vite": "~7.3.6",
     "wait-on": "^8.0.1"
   },
   "build": {
@@ -55,8 +64,11 @@
     ],
     "extraResources": [
       {
-        "from": "bin",
-        "to": "bin"
+        "from": "native/out",
+        "to": "native",
+        "filter": [
+          "morph-confine.exe"
+        ]
       },
       "THIRD_PARTY_NOTICES.md"
     ],
@@ -79,6 +91,7 @@
       ],
       "icon": "build/icon.ico"
     },
+    "afterPack": "./scripts/after-pack.cjs",
     "nsis": {
       "oneClick": false,
       "perMachine": false,
@@ -90,7 +103,11 @@
         "he_IL"
       ],
       "language": "1037",
-      "artifactName": "Morph-Setup-${version}.${ext}"
+      "artifactName": "Morph-Setup-${version}.${ext}",
+      "include": "build/installer.nsh"
     }
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

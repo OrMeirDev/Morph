@@ -1,95 +1,143 @@
+// Composition root: builds the modules, wires IPC and owns the window and app lifecycle. No
+// conversion, detection or persistence logic lives here.
 const { app, BrowserWindow, ipcMain, dialog, shell, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { pathToFileURL } = require('url');
 const { autoUpdater } = require('electron-updater');
-const { detect } = require('./detect.cjs');
-const { convert, toolStatus, setProfileDir } = require('./convert.cjs');
 
-// ---------- settings & history ----------
+const limits = require('./domain/limits.cjs');
+const { ToolRegistry } = require('./infra/ToolRegistry.cjs');
+const { PersistentWorker, ConfinedDetector, runInFreshWorker, probeImageWorker } = require('./infra/WorkerHost.cjs');
+const { SettingsRepository, HistoryRepository, JobRepository } = require('./infra/repositories.cjs');
+const { OfficeProfileManager } = require('./infra/OfficeProfileManager.cjs');
+const { discardLeftovers } = require('./infra/OutputPublisher.cjs');
+const { sweepWorkspaces } = require('./infra/JobWorkspace.cjs');
+const { FileIntakeService } = require('./app/FileIntakeService.cjs');
+const { ConversionCoordinator } = require('./app/ConversionCoordinator.cjs');
+const { createRouter, trustedSenderCheck } = require('./ipc/router.cjs');
+const adapters = require('./adapters/index.cjs');
 
-const dataFile = (name) => path.join(app.getPath('userData'), name);
-const readJson = (name, fallback) => {
-  try { return JSON.parse(fs.readFileSync(dataFile(name), 'utf8')); } catch { return fallback; }
-};
-const writeJson = (name, value) => {
-  fs.mkdirSync(app.getPath('userData'), { recursive: true });
-  fs.writeFileSync(dataFile(name), JSON.stringify(value, null, 2));
-};
-const defaults = () => ({
-  outputMode: 'beside', // 'beside' = next to the original file, 'folder' = always into `folder`
-  folder: path.join(app.getPath('documents'), 'Morph'),
-  quality: 'high',
-  maxHeight: null,
-});
-const readSettings = () => ({ ...defaults(), ...readJson('settings.json', {}) });
-
-// ---------- app updates (same flow as Grab: GitHub releases, silent install + relaunch) ----------
+const DEV_URL = 'http://localhost:5174';
+const INDEX_HTML = path.join(__dirname, '..', 'dist', 'index.html');
+const APP_URL_PREFIX = process.env.VITE_DEV ? `${DEV_URL}/` : pathToFileURL(INDEX_HTML).href;
 
 let mainWindow = null;
-const sendUpdate = (status) => {
-  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('update:status', status);
+const sendToWindow = (channel, data) => {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, data);
 };
+
+// ---------- modules ----------
+
+const userData = app.getPath('userData');
+const settings = new SettingsRepository(userData, { defaultFolder: path.join(app.getPath('documents'), 'Morph') });
+const history = new HistoryRepository(userData, { maxEntries: limits.history.maxEntries });
+const journal = new JobRepository(userData);
+const detectionWorker = new PersistentWorker();
+const tools = new ToolRegistry({
+  probeImages: () => probeImageWorker({ confinement: tools.confinement, fallback: () => detectionWorker.request({ type: 'probe' }, { timeoutMs: limits.deadlines.probe }) }),
+});
+const confinedDetector = new ConfinedDetector({ confinement: tools.confinement });
+// Detection: in the confined worker whenever confinement is enforced (it never opens the original;
+// Morph passes the byte ranges it asks for); refused when Windows confinement is unavailable;
+// the unconfined worker only where confinement does not apply (not Windows, or turned off).
+const detect = (file) => {
+  const o = { timeoutMs: limits.deadlines.detect };
+  if (tools.confinement.mode === 'enforced') return confinedDetector.detect(file, o);
+  if (tools.confinement.mode === 'unavailable') return Promise.reject(Object.assign(new Error(`confinement-unavailable:detect:${tools.confinement.reason}`), { code: 'confinement-unavailable' }));
+  return detectionWorker.request({ type: 'detect', file }, o);
+};
+const intake = new FileIntakeService({
+  detect,
+  tools,
+  limits: limits.intake,
+});
+// Must stay short: see infra/OfficeProfileManager.cjs.
+const officeProfiles = new OfficeProfileManager({ baseDir: path.join(userData, 'loprofile') });
+const coordinator = new ConversionCoordinator({
+  intake,
+  tools,
+  settings,
+  history,
+  journal,
+  adapters,
+  officeProfiles,
+  runTool: (name, args, o) => tools.run(name, args, { tailBytes: limits.logTailBytes, maxCaptureBytes: limits.maxCapturedBytes, ...o }),
+  runWorker: (msg, o) => runInFreshWorker(msg, { ...o, confine: { confinement: tools.confinement, workspace: o.workspace } }),
+  emit: (update) => sendToWindow('job:update', update),
+});
+
+// A crash or forced quit can leave staging files, empty reservations and workspaces behind.
+// Clean them up; interrupted jobs are not restarted.
+async function recoverInterruptedJobs() {
+  const interrupted = journal.takeInterrupted();
+  for (const r of interrupted) await discardLeftovers(r.leftovers || []);
+  await sweepWorkspaces();
+  await tools.confinement.sweep(); // AppContainer profiles of jobs a crash interrupted
+  return interrupted.length;
+}
+
+// ---------- app updates (GitHub releases, silent install + relaunch) ----------
+
 autoUpdater.autoDownload = false;
 autoUpdater.autoInstallOnAppQuit = true;
-autoUpdater.on('update-available', (info) => sendUpdate({ state: 'available', version: info.version }));
-autoUpdater.on('update-not-available', () => sendUpdate({ state: 'none' }));
-autoUpdater.on('download-progress', (p) => sendUpdate({ state: 'downloading', percent: Math.round(p.percent) }));
-autoUpdater.on('update-downloaded', (info) => sendUpdate({ state: 'ready', version: info.version }));
-autoUpdater.on('error', (e) => sendUpdate({ state: 'error', message: String(e?.message || e).slice(0, 200) }));
+autoUpdater.on('update-available', (info) => sendToWindow('update:status', { state: 'available', version: info.version }));
+autoUpdater.on('update-not-available', () => sendToWindow('update:status', { state: 'none' }));
+autoUpdater.on('download-progress', (p) => sendToWindow('update:status', { state: 'downloading', percent: Math.round(p.percent) }));
+autoUpdater.on('update-downloaded', (info) => sendToWindow('update:status', { state: 'ready', version: info.version }));
+autoUpdater.on('error', (e) => sendToWindow('update:status', { state: 'error', message: String(e?.message || e).slice(0, 200) }));
 
-const jobs = new Map(); // id -> { cancel }
+const withDeadline = (promise, ms) => Promise.race([promise, new Promise((r) => setTimeout(r, ms))]);
 
-ipcMain.handle('update:check', () => (app.isPackaged ? autoUpdater.checkForUpdates().then(() => true).catch(() => false) : false));
-ipcMain.handle('update:download', () => autoUpdater.downloadUpdate().catch(() => null));
-ipcMain.handle('update:install', () => {
-  for (const job of jobs.values()) job.cancel();
-  autoUpdater.quitAndInstall(true, true);
+// ---------- IPC ----------
+
+const router = createRouter({
+  ipcMain,
+  isTrustedSender: trustedSenderCheck({ getWindow: () => mainWindow, appUrlPrefix: APP_URL_PREFIX }),
+  log: (m) => console.warn(m),
 });
-ipcMain.handle('app:version', () => app.getVersion());
 
-// ---------- files & conversions ----------
-
-ipcMain.handle('files:detect', async (_e, paths) => Promise.all(paths.map(async (p) => ({ path: p, ...(await detect(p)) }))));
-ipcMain.handle('files:pick', async () => {
+router.handle('files:detect', (paths) => intake.detectPaths(paths));
+router.handle('files:pick', async () => {
   const r = await dialog.showOpenDialog(mainWindow, { properties: ['openFile', 'multiSelections'] });
   return r.canceled ? [] : r.filePaths;
 });
-ipcMain.handle('tools:status', () => toolStatus());
+// A row removed from the list frees its file ID, unless a job is still using it.
+router.handle('files:release', (fileId) => { if (!coordinator.isBusy(fileId)) intake.release(fileId); });
+router.handle('jobs:enqueue', ({ fileId, target }) => coordinator.enqueue({ fileId, target }));
+router.handle('jobs:cancel', (fileId) => coordinator.cancel(fileId));
+router.handle('jobs:snapshot', () => coordinator.snapshot());
+router.handle('tools:status', async () => (await tools.probe()).status());
 
-ipcMain.handle('job:start', async (e, job) => {
-  const s = readSettings();
-  const handle = convert(
-    { ...job, outDir: s.outputMode === 'folder' ? s.folder : null, quality: s.quality, maxHeight: s.maxHeight },
-    (percent) => { if (!e.sender.isDestroyed()) e.sender.send('job:progress', { id: job.id, percent }); },
-  );
-  jobs.set(job.id, handle);
-  const result = await handle.done;
-  jobs.delete(job.id);
-  return result;
-});
-ipcMain.handle('job:stop', (_e, id) => jobs.get(id)?.cancel());
+router.handle('settings:get', () => settings.get());
+router.handle('settings:set', (patch) => settings.patch(patch));
 
-ipcMain.handle('settings:get', () => readSettings());
-ipcMain.handle('settings:set', (_e, patch) => {
-  const next = { ...readSettings(), ...patch };
-  writeJson('settings.json', next);
-  return next;
-});
+router.handle('history:get', () => history.list().map((e) => ({ ...e, exists: fs.existsSync(e.output) })));
+router.handle('history:clear', () => history.clear());
 
-ipcMain.handle('history:get', () => readJson('history.json', []));
-ipcMain.handle('history:add', (_e, entry) => {
-  writeJson('history.json', [{ ...entry, convertedAt: new Date().toISOString() }, ...readJson('history.json', [])].slice(0, 1000));
-});
-ipcMain.handle('history:clear', () => writeJson('history.json', []));
-
-ipcMain.handle('folder:choose', async () => {
+router.handle('folder:choose', async () => {
   const r = await dialog.showOpenDialog(mainWindow, { properties: ['openDirectory', 'createDirectory'] });
   return r.canceled ? null : r.filePaths[0];
 });
-ipcMain.handle('folder:open', (_e, dir) => { fs.mkdirSync(dir, { recursive: true }); return shell.openPath(dir); });
-ipcMain.handle('file:show', (_e, file) => shell.showItemInFolder(file));
-ipcMain.handle('file:open', (_e, file) => shell.openPath(file));
-ipcMain.handle('file:exists', (_e, file) => !!file && fs.existsSync(file));
+router.handle('folder:open', () => {
+  const { folder } = settings.get();
+  fs.mkdirSync(folder, { recursive: true });
+  return shell.openPath(folder);
+});
+// Only outputs Morph published (recorded in history) may be opened or revealed.
+router.handle('output:open', (p) => (history.hasOutput(p) ? shell.openPath(p) : 'not-a-morph-output'));
+router.handle('output:show', (p) => { if (history.hasOutput(p)) shell.showItemInFolder(p); });
+
+router.handle('app:version', () => app.getVersion());
+router.handle('update:check', () => (app.isPackaged ? autoUpdater.checkForUpdates().then(() => true).catch(() => false) : false));
+router.handle('update:download', () => autoUpdater.downloadUpdate().catch(() => null));
+// Stop conversions and wait for their cleanup before the installer replaces the app.
+router.handle('update:install', async () => {
+  await withDeadline(coordinator.cancelAll(), 20000);
+  detectionWorker.stop();
+  confinedDetector.stop();
+  autoUpdater.quitAndInstall(true, true);
+});
 
 // ---------- window ----------
 
@@ -109,6 +157,7 @@ function createWindow() {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
       preload: path.join(__dirname, 'preload.cjs'),
     },
   });
@@ -118,11 +167,14 @@ function createWindow() {
     setTimeout(() => autoUpdater.checkForUpdates().catch(() => {}), 3000);
     setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 4 * 60 * 60 * 1000);
   });
-  // Files dropped outside the drop zone must not navigate the window away from the app.
+  // Files dropped outside the drop zone must not navigate the window away from the app, and the
+  // app never opens other windows or embeds web views.
   win.webContents.on('will-navigate', (ev) => ev.preventDefault());
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  win.webContents.on('will-attach-webview', (ev) => ev.preventDefault());
 
-  if (process.env.VITE_DEV) win.loadURL('http://localhost:5174');
-  else win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
+  if (process.env.VITE_DEV) win.loadURL(DEV_URL);
+  else win.loadFile(INDEX_HTML);
 }
 
 // One Morph at a time: opening it again brings the open window to the front instead.
@@ -135,11 +187,18 @@ const focusMain = () => {
 if (!app.requestSingleInstanceLock()) app.exit(0);
 app.on('second-instance', focusMain);
 
-app.whenReady().then(() => {
-  setProfileDir(path.join(app.getPath('userData'), 'loprofile')); // must stay short: see convert.cjs
+app.whenReady().then(async () => {
+  await recoverInterruptedJobs().catch(() => 0);
+  tools.probe(); // in the background; intake waits for it
   createWindow();
 });
-app.on('window-all-closed', () => {
-  for (const job of jobs.values()) job.cancel();
+
+let quitting = false;
+app.on('window-all-closed', async () => {
+  if (quitting) return;
+  quitting = true;
+  await withDeadline(coordinator.cancelAll(), 10000);
+  detectionWorker.stop();
+  confinedDetector.stop();
   app.quit();
 });
