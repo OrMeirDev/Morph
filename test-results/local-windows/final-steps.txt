@@ -1,0 +1,7 @@
+build-app exit 0 67s
+npm-test exit 0 457s
+confine-diagnose exit 0 870s
+bin-verify exit 0 59s
+smoke exit 0 17s
+local-check exit 0 47s
+DONE

@@ -1,0 +1,6 @@
+# Every text file is checked out with LF, on Windows too. Generated files (docs/FORMATS.md)
+# are compared byte for byte with what the scripts produce, and the engines read LF fine.
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.ico binary
+*.png binary

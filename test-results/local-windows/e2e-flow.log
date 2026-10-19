@@ -1,0 +1,123 @@
+
+> morph@1.0.3 e2e:flow
+> cross-env VITE_E2E_HOOKS=1 vite build && electron e2e/conversion-flow.cjs
+
+[36mvite v7.3.6 [32mbuilding client environment for production...[36m[39m
+transforming...
+[32m✓[39m 1623 modules transformed.
+rendering chunks...
+computing gzip size...
+[2mdist/[22m[32mindex.html                       [39m[1m[2m  0.77 kB[22m[1m[22m[2m │ gzip:  0.40 kB[22m
+[2mdist/[22m[32massets/logo-lockup-fT68ksM-.svg  [39m[1m[2m157.39 kB[22m[1m[22m[2m │ gzip: 53.68 kB[22m
+[2mdist/[22m[35massets/index-BwOA44RA.css        [39m[1m[2m 35.13 kB[22m[1m[22m[2m │ gzip:  7.93 kB[22m
+[2mdist/[22m[36massets/index-DjhXzrTQ.js         [39m[1m[2m198.07 kB[22m[1m[22m[2m │ gzip: 65.14 kB[22m
+[32m✓ built in 1.08s[39m
+
+Error occurred in handler for 'jobs:enqueue': SchemaError: bad-request:arg0.fileId
+    at C:\Users\or072\Desktop\Claude\Morph-wt-validate\electron\ipc\schemas.cjs:10:122
+    at C:\Users\or072\Desktop\Claude\Morph-wt-validate\electron\ipc\schemas.cjs:21:77
+    at Array.map (<anonymous>)
+    at C:\Users\or072\Desktop\Claude\Morph-wt-validate\electron\ipc\schemas.cjs:21:53
+    at C:\Users\or072\Desktop\Claude\Morph-wt-validate\electron\ipc\schemas.cjs:31:33
+    at Array.map (<anonymous>)
+    at C:\Users\or072\Desktop\Claude\Morph-wt-validate\electron\ipc\schemas.cjs:31:19
+    at C:\Users\or072\Desktop\Claude\Morph-wt-validate\electron\ipc\router.cjs:15:24
+    at Session.<anonymous> (node:electron/js2c/browser_init:1:118964)
+    at Session.emit (node:events:514:28) {
+  code: 'bad-request'
+}
+Error occurred in handler for 'settings:set': SchemaError: bad-request:arg0.quality
+    at Object.quality (C:\Users\or072\Desktop\Claude\Morph-wt-validate\electron\ipc\schemas.cjs:28:66)
+    at C:\Users\or072\Desktop\Claude\Morph-wt-validate\electron\ipc\schemas.cjs:26:79
+    at Array.map (<anonymous>)
+    at C:\Users\or072\Desktop\Claude\Morph-wt-validate\electron\ipc\schemas.cjs:26:49
+    at C:\Users\or072\Desktop\Claude\Morph-wt-validate\electron\ipc\schemas.cjs:31:33
+    at Array.map (<anonymous>)
+    at C:\Users\or072\Desktop\Claude\Morph-wt-validate\electron\ipc\schemas.cjs:31:19
+    at C:\Users\or072\Desktop\Claude\Morph-wt-validate\electron\ipc\router.cjs:15:24
+    at Session.<anonymous> (node:electron/js2c/browser_init:1:118964)
+    at Session.emit (node:events:514:28) {
+  code: 'bad-request'
+}
+{
+  "passed": 15,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "CSP meta present",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "removed APIs are gone",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "test hook present in the e2e build",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "forged path as file ID refused",
+      "ok": true,
+      "detail": "Error invoking remote method 'jobs:enqueue': Error: bad-request:arg0.fileId"
+    },
+    {
+      "name": "unknown file ID refused",
+      "ok": true,
+      "detail": "{\"ok\":false,\"error\":\"unknown-file\"}"
+    },
+    {
+      "name": "invalid setting refused",
+      "ok": true,
+      "detail": "Error invoking remote method 'settings:set': Error: bad-request:arg0.quality"
+    },
+    {
+      "name": "opening a non-Morph path refused",
+      "ok": true,
+      "detail": "\"not-a-morph-output\""
+    },
+    {
+      "name": "concurrent adds deduplicated",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "unknown file shown as unsupported",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "convert all completed",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "output written next to the original",
+      "ok": true,
+      "detail": "huge.png, notes.xyz, photo.jpg, photo.png"
+    },
+    {
+      "name": "stop ends the job and offers convert again",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no SVG written after stop",
+      "ok": true,
+      "detail": "huge.png, notes.xyz, photo.jpg, photo.png"
+    },
+    {
+      "name": "no staging leftovers",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "history shows the conversion",
+      "ok": true,
+      "detail": ""
+    }
+  ],
+  "screenshotErrors": []
+}

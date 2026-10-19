@@ -1,0 +1,428 @@
+
+> morph@1.0.3 test
+> node --test --test-concurrency=1 --test-reporter=spec "test/**/*.test.mjs" "test/**/*.test.cjs"
+
+✔ parses entries from a 7z -slt listing (header block skipped) (1.1264ms)
+✔ unsafe paths are rejected (0.1558ms)
+✔ links, encryption, depth, count, size and ratio budgets (38.9802ms)
+✔ a recorded payload verifies clean (14.0285ms)
+✔ tampered, missing and extra files all fail verification (7.966ms)
+✔ no manifest means no packaging (1.038ms)
+✔ every advertised target has an adapter and requirements (0.7433ms)
+✔ targets depend on verified engine capabilities, not on the table alone (1.0854ms)
+✔ images need ffmpeg only for BMP/ICO, and HEIC needs its decoder (0.1645ms)
+✔ fidelity is stated for lossy-in-kind directions (0.1306ms)
+✔ an unknown direction has no capability (0.1182ms)
+✔ an AZW3 book is offered MOBI but not AZW3 (0.0816ms)
+✔ e-book -> DOCX carries its known limit (Hebrew paragraph direction) to the UI (0.1662ms)
+✔ byte-range detection gives the same answer as reading the file (94.686ms)
+✔ confined detector: same answers, and the worker is never given a path (168.0429ms)
+✔ confined detector: reads are bounded (per read and per file) and stay inside the file (239.4418ms)
+✔ confined detector: a missed deadline kills the worker; the next request starts a fresh one (181.5369ms)
+✔ confined detector: a missing file and a folder answer like detectFile (1.211ms)
+✔ every tool has a confinement policy with a known isolation (1.0523ms)
+✔ not Windows: unconfined and reported as unsupported (not silent) (0.8669ms)
+✔ Windows without the helper: engines are refused with the reason, never run unconfined (0.9445ms)
+✔ MORPH_CONFINEMENT=off is reported as disabled (0.14ms)
+✔ enforced: AppContainer, read only the engine folder, write only the workspace (+ given folders), parent watch (2.5413ms)
+✔ enforced: an engine outside Morph's folders gets no read grant (system folders are never modified) (1.9567ms)
+✔ enforced without a workspace is an error, not an unconfined run (0.7119ms)
+✔ helper outcomes become errors the UI understands (0.1288ms)
+✔ ProcessRunner: a limit reported by the helper fails the call even when the exit code is 0 (56.99ms)
+✔ ProcessRunner: a successful confined call returns the helper's accounting (52.4267ms)
+✔ enforced, low-integrity engines: Low token, Low labels on the workspace and given folders, no read grants (1.9575ms)
+✔ low-integrity with restrictReads: job SID, --restrict-reads, read grant only on the engine's own folder (1.5017ms)
+✔ MORPH_CONFINE_LIMITS overrides only known tools with positive integers (0.1467ms)
+✔ per-job identity: two workspaces never share an AppContainer, the same workspace always maps to the same one (3.1444ms)
+✔ extra read folders are granted only inside Morph's folders (1.4592ms)
+✔ AppContainer calls register a per-job profile that is removed again (helper on exit, else cleanup) (2.3181ms)
+✔ a conversion publishes a verified output and records history after publication (37.1001ms)
+✔ commands are validated: unknown file, unknown direction, duplicate active job (28.6428ms)
+✔ one job at a time, in arrival order (157.1816ms)
+✔ cancel before start: removed from the queue, never runs (34.666ms)
+✔ cancel during work that ignores the signal: no output, no history, next job runs (MOR-01) (44.8633ms)
+✔ cancel immediately before publication: the artifact is discarded (13.6447ms)
+✔ Stop during publication, after the name is reserved but before the final rename: cancelled, nothing written (26.495ms)
+✔ an adapter that honours the signal ends cancelled, and its partial output goes with the workspace (16.6974ms)
+✔ engines get a copy of the input inside the workspace, never the original (26.9923ms)
+✔ an output that is not the requested format is never published (16.4769ms)
+✔ engine failure leaves nothing behind and reports the engine message (16.4885ms)
+✔ a file changed after detection is refused before any work (9.4513ms)
+✔ settings are snapshotted at enqueue (27.6816ms)
+✔ Stop while the workspace is being prepared never starts the engine (15.6535ms)
+✔ cancelAll stops everything and resolves when idle (26.4324ms)
+✔ corpus files are the recorded ones (SHA-256 in SOURCES.md) and all are listed (2.0782ms)
+﹣ Hebrew poem DOCX -> PDF: every line in Hebrew, right-to-left text kept in order (5670.9704ms) # no LibreOffice
+﹣ Hebrew poem DOCX -> ODT: right-to-left paragraphs and the heading styles survive (0.1844ms) # no LibreOffice
+﹣ Hebrew poem DOCX -> TXT keeps the niqqud (0.0949ms) # no LibreOffice
+✔ Hebrew poem PDF -> TXT (Poppler) and -> PNG pages (1221.7519ms)
+﹣ Hebrew poem EPUB -> DOCX and -> TXT (Calibre): Hebrew text kept; paragraph RTL is the known limit (0.4881ms) # no Calibre
+✔ IRS W-9 PDF (6 pages, form fields) -> TXT, -> JPG pages, -> DOCX (1442.209ms)
+﹣ Census XLSX (styled table, merged headers) -> CSV and -> ODS keep the numbers (0.1891ms) # no LibreOffice
+﹣ Gutenberg EPUB (12 chapters, cover image) -> TXT, -> AZW3 and -> PDF (0.2018ms) # no Calibre
+✔ the corpus files were not modified by any conversion (1.4824ms)
+✔ GIF frames are counted structurally (17.5688ms)
+✔ a single-frame GIF whose comment holds 0x21 0xF9 pairs is still single-frame (46.5583ms)
+✔ a truncated GIF is an error, not an endless read (8.0409ms)
+✔ content wins over the name, and the rename is reported (42.2297ms)
+✔ a name-only match says so (2.4404ms)
+✔ a zip named .docx is treated as a document (container confidence) (2.7798ms)
+✔ unknown content with an unknown name is unsupported; folders are refused (7.3285ms)
+✔ classify keeps tar.gz as an archive (0.1378ms)
+✔ AZW3/AZW (Mobipocket family) keep their name: no false "renamed" warning, MOBI still offered (0.3004ms)
+✔ docs/FORMATS.md matches the conversion registry (run node scripts/format-matrix.cjs) (9.4579ms)
+✔ THIRD_PARTY_NOTICES.md names every bundled engine at the version and URL the lock pins (11.8689ms)
+﹣ document -> DOCX keeps Hebrew RTL, bold and the table (1211.3522ms) # no LibreOffice
+﹣ document -> PDF: two pages, Hebrew and table text (0.17ms) # no LibreOffice
+﹣ DOCX -> ODT keeps the table and the right-to-left paragraph (0.1055ms) # no LibreOffice
+﹣ document -> RTF keeps the table, bold and Hebrew (0.1079ms) # no LibreOffice
+﹣ document -> text: words only, UTF-8 Hebrew, no markup (0.0952ms) # no LibreOffice
+﹣ document -> EPUB: valid package with the Hebrew text (0.1227ms) # no LibreOffice
+﹣ spreadsheet -> XLSX keeps both sheets, the formula and its value (0.0877ms) # no LibreOffice
+﹣ spreadsheet -> CSV: first sheet only, computed values (0.0834ms) # no LibreOffice
+﹣ spreadsheet -> PDF shows the computed value and the Hebrew label (0.2319ms) # no LibreOffice
+﹣ presentation -> PPTX keeps three slides and their text (0.2933ms) # no LibreOffice
+﹣ presentation -> PDF: one page per slide (0.1257ms) # no LibreOffice
+﹣ PPTX -> ODP keeps three slides (0.0781ms) # no LibreOffice
+﹣ e-book -> text: every block, in order, Hebrew intact, no markup (1192.1912ms) # no Calibre
+﹣ e-book -> DOCX: headings, bold, list, Hebrew text and book metadata (0.2157ms) # no Calibre
+﹣ e-book -> PDF: text in order, Hebrew, title metadata (0.1528ms) # no Calibre
+﹣ e-book -> MOBI: Mobipocket 6 container that reads back as the same book (0.0922ms) # no Calibre
+﹣ e-book -> AZW3 (KF8), detected as AZW3, and AZW3 -> EPUB reads back the book (0.1035ms) # no Calibre
+﹣ PDF -> EPUB: a valid book with the page text (0.0867ms) # no Calibre
+engines here: {"soffice":"missing (confinement-failed:soffice:CreateWindowStation failed (Windows error 5))","calibre":"missing (confinement-failed:calibre:CreateWindowStation failed (Windows error 5))","pdftoppm":"26.09.0","sevenzip":"26.03","pdftotext":"26.09.0","pdfinfo":"26.09.0","ffprobe":"9.0.2-essentials_build-www.gyan.dev","ffmpeg":"9.0.2-essentials_build-www.gyan.dev","images":"0.35.5"}
+✔ tool probes ran (1228.4454ms)
+✔ MOR-01: an image cancelled at once ends cancelled and writes nothing (150.1335ms)
+✔ MOR-01: cancelling during native image work kills the worker; no output, next job fine (1969.059ms)
+▶ image matrix: PNG to every image target
+  ✔ jpg (1134.7583ms)
+  ✔ webp (1135.2051ms)
+  ✔ avif (1138.9843ms)
+  ✔ tiff (1116.2384ms)
+  ✔ gif (1129.436ms)
+  ✔ pdf (1174.5865ms)
+  ✔ svg (1116.5522ms)
+  ✔ bmp (1703.9817ms)
+  ✔ ico (1709.4405ms)
+✔ image matrix: PNG to every image target (11360.6711ms)
+✔ BMP input goes through ffmpeg (1996.7105ms)
+▶ audio matrix
+  ✔ mp3 (1523.0079ms)
+  ✔ m4a (1535.7767ms)
+  ✔ ogg (1522.329ms)
+  ✔ flac (1571.2027ms)
+  ✔ opus (1619.8605ms)
+  ✔ aac (1592.379ms)
+✔ audio matrix (9365.3972ms)
+▶ video matrix (odd dimensions, audio track)
+  ✔ mp4 (1611.4996ms)
+  ✔ mov (1678.8516ms)
+  ✔ mkv (1627.2016ms)
+  ✔ webm (1645.5605ms)
+  ✔ avi (1566.4984ms)
+  ✔ mp3 (1558.0323ms)
+  ✔ m4a (1617.4452ms)
+  ✔ wav (1602.3373ms)
+  ✔ ogg (1566.1462ms)
+  ✔ flac (1618.2864ms)
+  ✔ gif (1604.4717ms)
+  ✔ apng (1809.93ms)
+✔ video matrix (odd dimensions, audio track) (20244.8419ms)
+✔ audio to WAV is plain 16-bit PCM of the same length (2254.5434ms)
+▶ APNG to GIF, video and a single frame
+  ✔ gif (1606.6391ms)
+  ✔ mp4 (1624.2042ms)
+  ✔ webm (2094.3698ms)
+  ✔ png (1584.8776ms)
+✔ APNG to GIF, video and a single frame (7367.558ms)
+▶ SVG to raster images and PDF
+  ✔ png (1140.4977ms)
+  ✔ jpg (1104.3829ms)
+  ✔ webp (1115.6191ms)
+  ✔ pdf (1243.2416ms)
+✔ SVG to raster images and PDF (4604.2847ms)
+▶ animated GIF to video, APNG and a single frame
+  ✔ mp4 (1257.8583ms)
+  ✔ webm (1325.5291ms)
+  ✔ apng (1214.4157ms)
+  ✔ png (1206.5536ms)
+✔ animated GIF to video, APNG and a single frame (5370.5669ms)
+✔ PDF: one page to one image, several pages to a folder, text (1708.4646ms)
+﹣ Office: Hebrew RTL text survives text -> DOCX -> PDF, and a spreadsheet converts (0.2105ms) # no LibreOffice
+﹣ Office: PDF -> Word uses the PDF import filter (0.0685ms) # no LibreOffice
+▶ archives: zip repacks to 7z, tar and tar.gz with the same contents
+  ✔ 7z (906.5008ms)
+  ✔ tar (894.7879ms)
+  ✔ tar.gz (1170.2765ms)
+  ✔ tar.gz back to zip (inner tar opened) (2644.6538ms)
+✔ archives: zip repacks to 7z, tar and tar.gz with the same contents (5616.6149ms)
+✔ archives: traversal and link entries are refused before extraction (593.2011ms)
+✔ missing engines are not offered (calibre) (9.6462ms)
+✔ nothing is left in the job workspaces (2.2933ms)
+✔ the committed lock is valid and every engine is pinned to an https URL and a SHA-256 (1.1944ms)
+✔ lock validation: unpinned entries fail only with --require-pinned; bad hashes always fail (0.2751ms)
+✔ a fresh download is verified, cached, and the cache is re-verified on the next run (47.3235ms)
+✔ a download that does not match the pinned hash is rejected and not kept (6.142ms)
+✔ a missing file on the host is a clear error (3.9796ms)
+✔ release resolution picks the newest stable release old enough, with a matching asset (0.3748ms)
+✔ LibreOffice trimming keeps English and Hebrew and the default icon theme (8.1159ms)
+✔ the copy of the package an administrative install leaves at the top is removed, nothing else (1.5148ms)
+✔ zip extraction uses Windows' own tar, whatever PATH holds (Git Bash) (40.5115ms)
+✔ the committed payload manifest contains no administrative-install package copy (13.0108ms)
+✔ job commands accept only a file ID and a known-shaped target (1.1293ms)
+✔ settings patches are typed per key (0.2524ms)
+✔ intake is bounded (0.1484ms)
+✔ the router refuses other windows, sub-frames and other pages before the handler runs (0.7614ms)
+✔ every channel the preload exposes has a schema (0.5058ms)
+✔ publishes under the plain name, then numbered names; never overwrites (6.66ms)
+✔ simultaneous publishes of the same name get distinct files (49.7109ms)
+✔ a cancel noticed at publish time leaves nothing behind (2.8262ms)
+✔ an artifact already staged in the output folder is renamed, not copied (6.3038ms)
+✔ page folders publish atomically under a free name (5.4733ms)
+✔ the original file is never a valid destination (6.1165ms)
+✔ recovery removes staging files and empty reservations but keeps real outputs (2.151ms)
+✔ a cancel that lands during reservation, before the final rename, publishes nothing (file) (2.2768ms)
+✔ a cancel that lands during reservation, before the final rename, publishes nothing (page folder) (4.2492ms)
+✔ captures stdout and resolves on exit 0 (53.5944ms)
+✔ a non-zero exit rejects with the last stderr line (52.0992ms)
+✔ a missing executable is a typed spawn failure, not a crash (1.2031ms)
+✔ the deadline ends a hung tool with a timeout error (472.184ms)
+✔ runaway output keeps only a bounded tail (93.4285ms)
+✔ full stdout capture is bounded (61.3188ms)
+✔ progress lines are split on \r and \n (58.1135ms)
+✔ an already-aborted signal never starts the tool (0.4012ms)
+✔ cancel ends the tool and its descendants (process group / taskkill /T) (519.219ms)
+✔ settings: defaults, validated patches, and refused garbage (9.7015ms)
+✔ settings: a corrupt file is set aside and defaults are used (6.5164ms)
+✔ settings: version-0 values are kept one by one, invalid ones reset (5.9927ms)
+✔ history: migrates the v0 bare array, adds, caps and answers hasOutput (23.1762ms)
+✔ writes are atomic: no temp files remain (132.3681ms)
+✔ job journal: records leftovers and hands back interrupted jobs once (23.1466ms)
+✔ the liveness check sees a running process and not the same PID after it ended (832.2032ms)
+✔ normal completion returns the helper's real statistics, before success is reported (158.8571ms)
+✔ success cannot resolve while the helper is still alive (2243.0627ms)
+✔ a failed final helper outcome overrides an earlier successful reply (164.7925ms)
+✔ a helper that does not exit after the reply is killed at the deadline and the call fails (1095.5329ms)
+✔ cancellation leaves no worker, no staging and no published output (4054.2257ms)
+✔ formatGroups intersects targets per kind and reports a shared or mixed current target (0.91ms)
+✔ formatGroups drops a kind whose files share no target (0.0945ms)
+✔ conversionCounts counts pending, done, failed and total size (0.56ms)
+✔ withTarget resets finished/failed rows to ready and keeps other states (0.1074ms)
+✔ applyGroupTarget skips active rows and rows that cannot reach the target (0.1178ms)
+✔ clearing finished rows keeps pending ones (0.1387ms)
+✔ saveWhereText names the last two folder levels (0.1612ms)
+✔ fmtSize uses binary multiples like Windows Explorer (1.006ms)
+✔ baseName handles both separators (0.7357ms)
+✔ fmtLabel names office formats and upper-cases the rest (0.1048ms)
+✔ friendlyError maps engine messages to Hebrew (0.318ms)
+✔ the engine-isolation line is never silent about a missing protection (0.9293ms)
+✔ every known per-direction limit in the registry has a Hebrew note for the row (2.7675ms)
+✔ an ordinary wall time round-trips exactly (13.298ms)
+✔ New York spring-forward gap: 02:30 does not exist and is never shown as 01:30 (0.9713ms)
+✔ New York fall-back fold: 01:30 happens twice; the earlier one is chosen and both are reported (0.4652ms)
+✔ Jerusalem transitions (2026-03-27 forward, 2026-10-25 back) (0.6821ms)
+✔ day offset across month and year boundaries (0.9991ms)
+✔ length and weight factors (0.5753ms)
+✔ temperature conversions are affine (0.1078ms)
+✔ every linear unit round-trips through every other unit of its category (0.3322ms)
+✔ decimal and binary data units are distinct and labelled (0.1443ms)
+✔ month and year are labelled as averages of the Gregorian calendar (0.0702ms)
+probe results: {"soffice":{"ok":false,"version":null,"reason":"confinement-failed:soffice:CreateWindowStation failed (Windows error 5)"},"calibre":{"ok":false,"version":null,"reason":"confinement-failed:calibre:CreateWindowStation failed (Windows error 5)"},"sevenzip":{"ok":true,"version":"26.03","reason":null},"pdfinfo":{"ok":true,"version":"26.09.0","reason":null},"pdftoppm":{"ok":true,"version":"26.09.0","reason":null},"pdftotext":{"ok":true,"version":"26.09.0","reason":null},"ffprobe":{"ok":true,"version":"9.0.2-essentials_build-www.gyan.dev","reason":null},"ffmpeg":{"ok":true,"version":"9.0.2-essentials_build-www.gyan.dev","reason":null},"images":{"ok":true,"version":"0.35.5","heic":true,"reason":null}}
+✖ confinement is enforced and every engine passed its probe confined (1250.6722ms)
+✖ a confined engine cannot write outside its workspace: the OS denies it (canary unchanged) (1879.1087ms)
+✔ a confined engine cannot read a file outside its workspace (the original), only the copy inside (693.1146ms)
+✖ a confined engine has no network: loopback and internet both fail, while the host can reach both (17278.9816ms)
+✖ the job owns LibreOffice's descendants: killing only the helper ends soffice.com and soffice.bin (33842.2158ms)
+✖ Morph dying mid-conversion takes the engines with it; recovery leaves no staging; the next conversion works (27.0863ms)
+✖ a memory limit stops the engine: job failed with limit-memory, nothing left, the next conversion works (11.714ms)
+✖ Calibre's descendants belong to the job too (17.6031ms)
+﹣ FAT32: can a confined engine write to a volume without ACLs? (measured and recorded) (0.3314ms) # MORPH_TEST_FAT32 not set
+﹣ exFAT: can a confined engine write to a volume without ACLs? (measured and recorded) (0.1899ms) # MORPH_TEST_EXFAT not set
+MEASURED {"stress":"ffmpeg-4k-h264","tool":"ffmpeg","peakMiB":4202,"limitMiB":6656,"processes":2,"peakActive":2,"userMs":2875}
+✖ stress: ffmpeg 4K H.264 encode (adapter settings) (1255.74ms)
+MEASURED {"stress":"ffmpeg-4k-vp9","tool":"ffmpeg","peakMiB":1370,"limitMiB":6656,"processes":2,"peakActive":2,"userMs":8312}
+✔ stress: ffmpeg 4K VP9 encode (adapter settings) (2221.6425ms)
+✖ stress: LibreOffice 40,000-paragraph document to PDF (18.7127ms)
+MEASURED {"stress":"pdftoppm-a0-200dpi","tool":"pdftoppm","peakMiB":242,"limitMiB":1024,"processes":2,"peakActive":2,"userMs":1062}
+✔ stress: Poppler A0 page at 200 dpi (1414.9527ms)
+MEASURED {"stress":"sevenzip-128mib","tool":"sevenzip","peakMiB":380,"limitMiB":2048,"processes":2,"peakActive":2,"userMs":12937}
+✔ stress: 7-Zip 128 MiB into .7z at the default level (7903.567ms)
+✖ stress: Calibre 120-chapter book to PDF (5.4755ms)
+✖ test\windows\isolation.test.cjs (11.0753ms)
+✖ test\windows\payload.test.cjs (11.9838ms)
+ℹ tests 235
+ℹ suites 0
+ℹ pass 195
+ℹ fail 12
+ℹ cancelled 0
+ℹ skipped 28
+ℹ todo 0
+ℹ duration_ms 165741.1813
+
+✖ failing tests:
+
+test at test\windows\confinement.test.cjs:53:1
+✖ confinement is enforced and every engine passed its probe confined (1250.6722ms)
+  AssertionError [ERR_ASSERTION]: soffice: confinement-failed:soffice:CreateWindowStation failed (Windows error 5)
+      at TestContext.<anonymous> (C:\Users\or072\Desktop\Claude\Morph-wt-validate\test\windows\confinement.test.cjs:57:62)
+      at Test.runInAsyncScope (node:async_hooks:214:14)
+      at Test.run (node:internal/test_runner/test:1047:25)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at test\windows\confinement.test.cjs:61:1
+✖ a confined engine cannot write outside its workspace: the OS denies it (canary unchanged) (1879.1087ms)
+  Error: missing-tool:soffice
+      at ToolRegistry.run (C:\Users\or072\Desktop\Claude\Morph-wt-validate\electron\infra\ToolRegistry.cjs:112:37)
+      at run (C:\Users\or072\Desktop\Claude\Morph-wt-validate\test\windows\confinement.test.cjs:51:49)
+      at TestContext.<anonymous> (C:\Users\or072\Desktop\Claude\Morph-wt-validate\test\windows\confinement.test.cjs:94:13)
+      at async Test.run (node:internal/test_runner/test:1054:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+
+test at test\windows\confinement.test.cjs:128:1
+✖ a confined engine has no network: loopback and internet both fail, while the host can reach both (17278.9816ms)
+  AssertionError [ERR_ASSERTION]: control: the host itself reaches the internet (else this test proves nothing)
+      at TestContext.<anonymous> (C:\Users\or072\Desktop\Claude\Morph-wt-validate\test\windows\confinement.test.cjs:145:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+      at async Test.run (node:internal/test_runner/test:1054:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:744:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: null,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at test\windows\confinement.test.cjs:152:1
+✖ the job owns LibreOffice's descendants: killing only the helper ends soffice.com and soffice.bin (33842.2158ms)
+  Error: Command failed: powershell.exe -NoProfile -Command Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith('C:\Users\or072\Desktop\Claude\Morph-wt-validate\bin\libreoffice', 'OrdinalIgnoreCase') } | ForEach-Object { "$($_.ProcessId) $($_.Name)" }
+      at genericNodeError (node:internal/errors:983:15)
+      at wrappedFn (node:internal/errors:537:14)
+      at checkExecSyncError (node:child_process:916:11)
+      at execFileSync (node:child_process:952:15)
+      at ps (C:\Users\or072\Desktop\Claude\Morph-wt-validate\test\windows\confinement.test.cjs:27:21)
+      at processesUnder (C:\Users\or072\Desktop\Claude\Morph-wt-validate\test\windows\confinement.test.cjs:30:15)
+      at C:\Users\or072\Desktop\Claude\Morph-wt-validate\test\windows\confinement.test.cjs:159:50
+      at until (C:\Users\or072\Desktop\Claude\Morph-wt-validate\test\windows\confinement.test.cjs:39:30)
+      at async TestContext.<anonymous> (C:\Users\or072\Desktop\Claude\Morph-wt-validate\test\windows\confinement.test.cjs:159:20)
+      at async Test.run (node:internal/test_runner/test:1054:7) {
+    status: 3221225794,
+    signal: null,
+    output: [ null, '', '' ],
+    pid: 15204,
+    stdout: '',
+    stderr: ''
+  }
+
+test at test\windows\confinement.test.cjs:171:1
+✖ Morph dying mid-conversion takes the engines with it; recovery leaves no staging; the next conversion works (27.0863ms)
+  Error: Command failed: powershell.exe -NoProfile -Command Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith('C:\Users\or072\Desktop\Claude\Morph-wt-validate\bin\libreoffice', 'OrdinalIgnoreCase') } | ForEach-Object { "$($_.ProcessId) $($_.Name)" }
+      at genericNodeError (node:internal/errors:983:15)
+      at wrappedFn (node:internal/errors:537:14)
+      at checkExecSyncError (node:child_process:916:11)
+      at execFileSync (node:child_process:952:15)
+      at ps (C:\Users\or072\Desktop\Claude\Morph-wt-validate\test\windows\confinement.test.cjs:27:21)
+      at processesUnder (C:\Users\or072\Desktop\Claude\Morph-wt-validate\test\windows\confinement.test.cjs:30:15)
+      at startClean (C:\Users\or072\Desktop\Claude\Morph-wt-validate\test\windows\confinement.test.cjs:43:46)
+      at TestContext.<anonymous> (C:\Users\or072\Desktop\Claude\Morph-wt-validate\test\windows\confinement.test.cjs:172:3)
+      at Test.runInAsyncScope (node:async_hooks:214:14)
+      at Test.run (node:internal/test_runner/test:1047:25) {
+    status: 3221225794,
+    signal: null,
+    output: [ null, '', '' ],
+    pid: 32672,
+    stdout: '',
+    stderr: ''
+  }
+
+test at test\windows\confinement.test.cjs:194:1
+✖ a memory limit stops the engine: job failed with limit-memory, nothing left, the next conversion works (11.714ms)
+  Error: Command failed: powershell.exe -NoProfile -Command Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith('C:\Users\or072\Desktop\Claude\Morph-wt-validate\bin\libreoffice', 'OrdinalIgnoreCase') } | ForEach-Object { "$($_.ProcessId) $($_.Name)" }
+      at genericNodeError (node:internal/errors:983:15)
+      at wrappedFn (node:internal/errors:537:14)
+      at checkExecSyncError (node:child_process:916:11)
+      at execFileSync (node:child_process:952:15)
+      at ps (C:\Users\or072\Desktop\Claude\Morph-wt-validate\test\windows\confinement.test.cjs:27:21)
+      at processesUnder (C:\Users\or072\Desktop\Claude\Morph-wt-validate\test\windows\confinement.test.cjs:30:15)
+      at startClean (C:\Users\or072\Desktop\Claude\Morph-wt-validate\test\windows\confinement.test.cjs:43:46)
+      at TestContext.<anonymous> (C:\Users\or072\Desktop\Claude\Morph-wt-validate\test\windows\confinement.test.cjs:195:3)
+      at Test.runInAsyncScope (node:async_hooks:214:14)
+      at Test.run (node:internal/test_runner/test:1047:25) {
+    status: 3221225794,
+    signal: null,
+    output: [ null, '', '' ],
+    pid: 31032,
+    stdout: '',
+    stderr: ''
+  }
+
+test at test\windows\confinement.test.cjs:215:1
+✖ Calibre's descendants belong to the job too (17.6031ms)
+  Error: Command failed: powershell.exe -NoProfile -Command Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith('C:\Users\or072\Desktop\Claude\Morph-wt-validate\bin\calibre', 'OrdinalIgnoreCase') } | ForEach-Object { "$($_.ProcessId) $($_.Name)" }
+      at genericNodeError (node:internal/errors:983:15)
+      at wrappedFn (node:internal/errors:537:14)
+      at checkExecSyncError (node:child_process:916:11)
+      at execFileSync (node:child_process:952:15)
+      at ps (C:\Users\or072\Desktop\Claude\Morph-wt-validate\test\windows\confinement.test.cjs:27:21)
+      at processesUnder (C:\Users\or072\Desktop\Claude\Morph-wt-validate\test\windows\confinement.test.cjs:30:15)
+      at startClean (C:\Users\or072\Desktop\Claude\Morph-wt-validate\test\windows\confinement.test.cjs:43:46)
+      at TestContext.<anonymous> (C:\Users\or072\Desktop\Claude\Morph-wt-validate\test\windows\confinement.test.cjs:216:3)
+      at Test.runInAsyncScope (node:async_hooks:214:14)
+      at Test.run (node:internal/test_runner/test:1047:25) {
+    status: 3221225794,
+    signal: null,
+    output: [ null, '', '' ],
+    pid: 26688,
+    stdout: '',
+    stderr: ''
+  }
+
+test at test\windows\confinement.test.cjs:280:1
+✖ stress: ffmpeg 4K H.264 encode (adapter settings) (1255.74ms)
+  AssertionError [ERR_ASSERTION]: ffmpeg-4k-h264: 4202 MiB peak leaves less than 2x headroom under the 6656 MiB limit
+      at stress (C:\Users\or072\Desktop\Claude\Morph-wt-validate\test\windows\confinement.test.cjs:276:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+      at async Test.run (node:internal/test_runner/test:1054:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:744:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at test\windows\confinement.test.cjs:286:1
+✖ stress: LibreOffice 40,000-paragraph document to PDF (18.7127ms)
+  Error: missing-tool:soffice
+      at ToolRegistry.run (C:\Users\or072\Desktop\Claude\Morph-wt-validate\electron\infra\ToolRegistry.cjs:112:37)
+      at run (C:\Users\or072\Desktop\Claude\Morph-wt-validate\test\windows\confinement.test.cjs:51:49)
+      at C:\Users\or072\Desktop\Claude\Morph-wt-validate\test\windows\confinement.test.cjs:289:10
+      at stress (C:\Users\or072\Desktop\Claude\Morph-wt-validate\test\windows\confinement.test.cjs:271:21)
+      at async Test.run (node:internal/test_runner/test:1054:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+
+test at test\windows\confinement.test.cjs:307:1
+✖ stress: Calibre 120-chapter book to PDF (5.4755ms)
+  Error: missing-tool:calibre
+      at ToolRegistry.run (C:\Users\or072\Desktop\Claude\Morph-wt-validate\electron\infra\ToolRegistry.cjs:112:37)
+      at run (C:\Users\or072\Desktop\Claude\Morph-wt-validate\test\windows\confinement.test.cjs:51:49)
+      at C:\Users\or072\Desktop\Claude\Morph-wt-validate\test\windows\confinement.test.cjs:316:10
+      at stress (C:\Users\or072\Desktop\Claude\Morph-wt-validate\test\windows\confinement.test.cjs:271:21)
+      at async Test.run (node:internal/test_runner/test:1054:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+
+test at test\windows\isolation.test.cjs:1:1
+✖ test\windows\isolation.test.cjs (11.0753ms)
+  'test failed'
+
+test at test\windows\payload.test.cjs:1:1
+✖ test\windows\payload.test.cjs (11.9838ms)
+  'test failed'

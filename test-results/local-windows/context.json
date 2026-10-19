@@ -1,0 +1,33 @@
+{
+    "recordedAt":  "2026-10-16T13:41:35.2816799+03:00",
+    "windows":  {
+                    "caption":  "Microsoft Windows 11 Pro",
+                    "version":  "10.0.26300",
+                    "displayVersion":  "26H2",
+                    "build":  "26300.9711",
+                    "architecture":  "64-bit",
+                    "processArch":  "AMD64"
+                },
+    "hardware":  {
+                     "ramTotalGB":  31.7,
+                     "ramFreeGB":  10.7,
+                     "systemDriveFreeGB":  374.6,
+                     "logicalProcessors":  28
+                 },
+    "account":  {
+                    "name":  "OR-MEIR-TSARFAT\\or0727",
+                    "kind":  "administrator-unelevated",
+                    "memberOfAdministrators":  true,
+                    "administratorsInToken":  "Group used for deny only",
+                    "tokenElevationType":  "limited",
+                    "tokenElevated":  false,
+                    "integrityLevel":  "Medium",
+                    "isInRoleAdministrator":  false
+                },
+    "repo":  {
+                 "path":  "C:\\Users\\or072\\Desktop\\Claude\\Morph-wt-validate",
+                 "sha":  "1112bd38148310cc0364fa466291cb6c77a090fa",
+                 "changedFiles":  5
+             },
+    "node":  "v22.22.2"
+}
