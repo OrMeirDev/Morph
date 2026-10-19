@@ -20,6 +20,7 @@ export default function ConversionStatus({ item, unsupported }) {
           {item.status === 'done' && <> · נוצר: {baseName(item.output)}</>}
           {item.status === 'error' && <span className="err-text"> · {friendlyError(item.error)}</span>}
           {item.status === 'queued' && ' · ממתין בתור'}
+          {item.status === 'cancelled' && <span className="muted"> · בוטל</span>}
           {['ready', 'queued', 'cancelled'].includes(item.status) && fidelityNote(item.fidelity?.[item.target]) && (
             <span className="muted"> · {fidelityNote(item.fidelity[item.target])}</span>
           )}

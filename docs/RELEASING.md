@@ -82,10 +82,10 @@ Missing inputs (owner), one route:
   `https://weu.codesigning.azure.net`), `AZURE_SIGNING_ACCOUNT`, `AZURE_SIGNING_PROFILE`.
 
 For both: repository variable `MORPH_PUBLISHER` = the certificate subject CN exactly. With it, CI
-requires a Valid, timestamped signature by that subject on the installer and `Morph.exe`. Route B
-also writes the publisher into `app-update.yml`, so updates signed by anyone else are refused; for
-route A add `"win": { "signtoolOptions": { "publisherName": "<same CN>" } }` with the first signed
-release (not before: an installed app with a publisher rejects unsigned updates).
+requires a Valid, timestamped signature by that subject on the installer and `Morph.exe`. Both
+routes write that publisher into `app-update.yml`, so an installed signed build refuses updates
+signed by anyone else. `npm run release` also refuses to publish unless the publisher and exactly
+one complete signing route are configured.
 
 Never paste a certificate, password or client secret into an issue, PR, log or document; only
 repository secrets hold them, and CI never prints them. Until a signature is verified, CI reports
@@ -94,7 +94,8 @@ signed.
 
 ## 6. Package and publish (owner)
 
-`npm run release` verifies `bin/` against the manifest, runs `npm run check`, builds and publishes.
+`npm run release` verifies `bin/` against the manifest, runs `npm run check`, requires a complete
+PFX or Azure signing configuration, builds and publishes. It cannot publish an unsigned build.
 Run it from the reviewed, merged commit with the verified payload only.
 
 ## 7. Provenance (owner)

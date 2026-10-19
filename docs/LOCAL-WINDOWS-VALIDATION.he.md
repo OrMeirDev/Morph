@@ -12,7 +12,7 @@
 | קוד שנבדק | commit `0f2d970` (ענף `claude/dazzling-johnson-3zccoi`, על בסיס `1112bd3`). אחריו שונו רק `.gitignore` ותיעוד |
 | גרסת האפליקציה | `1.0.4-local`, ‏`release\win-unpacked\Morph.exe` (ארוזה: `app.asar`, ‏sharp מתוך `app.asar.unpacked`, המנועים ב-`resources\bin`, העוזר ב-`resources\native\morph-confine.exe`, SHA-256 ‏`1ef66280…a521b`) |
 | Windows | Windows 11 Pro 26H2, build 26300.9711, x64 |
-| חומרה | i7-14700K, 28 מעבדים לוגיים, RAM ‏31.7 GB, דיסק C פנוי כ-375 GB (NTFS) |
+| חומרה | 28 מעבדים לוגיים, RAM ‏32 GB, דיסק NTFS |
 | מנועים | FFmpeg 9.0.2, 7-Zip 26.03, Poppler 26.09.0, LibreOffice 26.2.6.3, Calibre 9.15.0, sharp 0.35.5 — הורדו מחדש לפי `engines.lock.json`, כל הורדה נבדקה ב-SHA-256, ו-`bin/` זהה בית-לבית ל-`bin-manifest.json` לפני הבדיקות ואחריהן |
 | כלי בנייה | Node 22.22.2, ‏MSVC 19.50.35730 (Build Tools 2026) |
 
@@ -20,7 +20,7 @@
 
 | | |
 | --- | --- |
-| חשבון | `OR-MEIR-TSARFAT\or0727` (חשבון Microsoft) |
+| חשבון | שם החשבון הושמט מהדוח הציבורי |
 | סוג | **מנהל שרץ ללא הגבהה** (`administrator-unelevated`) |
 | אסימון | `TokenElevationType = limited`, ‏`TokenElevation = 0`, רמת שלמות **Medium**, ‏`BUILTIN\Administrators` = ‏"Group used for deny only" |
 | UAC | פעיל (`EnableLUA=1`) |
@@ -98,14 +98,14 @@
 
 ## 4. אירוע: הבדיקות כתבו לפרופיל Morph האמיתי — ומה שוחזר
 
-הרצה של `packaged-smoke.cjs` ושל הבדיקה המקומית שלי (לפני F4) כתבה ל-`C:\Users\or072\AppData\Roaming\Morph`:
+הרצה של `packaged-smoke.cjs` ושל הבדיקה המקומית שלי (לפני F4) כתבה לפרופיל האמיתי
+`%APPDATA%\Morph`:
 
-- **`history.json`:** נוספו 21 רשומות בדיקה, והקובץ הומר לפורמט v1, ש-Morph 1.0.3 המותקן אינו יודע לקרוא (דף ההיסטוריה ורישום היסטוריה אחרי המרה היו נשברים). לפני הבדיקות ההיסטוריה שלך הייתה **ריקה**: 0 רשומות legacy, וכל 21 הרשומות הצביעו לתיקיות הבדיקה. **שוחזר** ל-`[]`, הפורמט ש-1.0.3 כותב.
+- **`history.json`:** נוספו 21 רשומות בדיקה, והקובץ הומר לפורמט v1, ש-Morph 1.0.3 המותקן אינו יודע לקרוא. רשומות הבדיקה הוסרו והקובץ שוחזר למצבו ולפורמט שלו מלפני הבדיקה.
 - **`jobs.json` ו-`DevToolsActivePort`:** נוצרו ע"י הבדיקות, והרשומה היחידה ביומן הצביעה לנתיב בדיקה. **נמחקו.**
 - **מטמונים שנוצרו היום ע"י הבדיקות:** `GPUPersistentCache`, ‏`ShaderCache`, ‏`GrShaderCache`, ‏`DIPS*`, ‏`declarative_performance_observer.db*` ו-`loprofile-aa33a4`. **נמחקו** (לפי שם ותאריך יצירה בלבד).
-- **`settings.json`:** **לא השתנה** (שינוי אחרון: 13.10).
+- **`settings.json`:** **לא השתנה**.
 - **`Local State` ו-`Preferences`:** עודכנו ע"י Chromium של Electron 44 ולא ניתן להחזיר אותם בדיוק. אלה קובצי מצב של Chromium ולא נתונים שלך.
-- **גיבוי** של המצב שאחרי הבדיקות (לפני השחזור) נשמר מחוץ למאגר, ב-scratchpad של הסשן הזה. הוא לא נכנס ל-git.
 - **8 פרופילי AppContainer `morph.job.*`** שהצטברו מהבדיקות היום (ראו F2) נמחקו בעזרת ה-sweep של Morph עצמו. המצב הנוכחי: 0.
 
 ההתקנה עצמה (`%LOCALAPPDATA%\Programs\Morph`) ומטמון העדכונים לא נגעו (חותמות הזמן מ-13.10).
@@ -144,7 +144,8 @@
 3. גרירה והחסן USB (§6).
 4. תעודת חתימה ו-`MORPH_PUBLISHER` (F1 בבקלוג); ‏SmartScreen עם מתקין חתום שהורד.
 5. החלטה על D2e (FAT32/exFAT) ועל חוק חומת אש למנועי Low (D2c).
-6. CI על ה-PR: לוודא שהבדיקות החדשות (Basic User, רישום פרופילים) עוברות על השרת.
+6. ~~CI על ה-PR~~: הושלם בריצה 38941691312 — בדיקת Basic User ברמת Medium ובדיקת רישום
+   הפרופילים עברו; 28/28 בדיקות בידוד ו-254/254 בדיקות עם המנועים הארוזים.
 
 ### הרצה תחת חשבון רגיל (לא מנהל)
 
@@ -163,10 +164,11 @@
 | L2 | מתקין ועדכון מבודדים (חשבון נפרד/VM) | Pending | חשבון נפרד או VM | אישור שחרור | QA / Release |
 | L3 | גרירה מהסייר והחסן USB | Pending | פעולה פיזית | W1 | QA |
 | L4 | ‏FAT32/exFAT/SMB מקומית | Pending | הרשאות מנהל ליצירת VHD/שיתוף | — | QA |
-| L5 | הבדיקות החדשות ב-CI | Ready | הרצת CI על ה-PR | מיזוג | CI |
+| L5 | הבדיקות החדשות ב-CI | **Done** | — | — | ריצה 38941691312 |
 | F1 | חתימת קוד; ‏SmartScreen | Pending | תעודה (בעלים) | אישור שחרור | Release |
 | D2c | ‏LibreOffice/Calibre: קריאה, רשת, כתיבה לתיקיות Low | Partial | החלטת בעלים; פנימיות המנועים | בידוד מלא | Native + security |
 | D2e | ‏FAT32/exFAT ללא הגנה | Open | החלטת בעלים | — | Application |
 | E4 | ‏RTL בפסקאות Calibre ← DOCX | Optional | — | הסרת הערת המגבלה | Engine |
 
 </div>
+7b7b5cb7a15fa5bb04a22675c9bb2278dd33af63

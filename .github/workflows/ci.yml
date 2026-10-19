@@ -178,6 +178,8 @@ jobs:
           if [ -n "$TS_ENDPOINT" ]; then
             SIGN=(-c.win.azureSignOptions.endpoint="$TS_ENDPOINT" -c.win.azureSignOptions.codeSigningAccountName="$TS_ACCOUNT"
                   -c.win.azureSignOptions.certificateProfileName="$TS_PROFILE" -c.win.azureSignOptions.publisherName="$MORPH_PUBLISHER")
+          elif [ -n "$MORPH_PUBLISHER" ]; then
+            SIGN=(-c.win.signtoolOptions.publisherName="$MORPH_PUBLISHER")
           fi
           npx electron-builder --win nsis --x64 --publish never -c.extraMetadata.version=1.0.4-ci "${SIGN[@]}" 2>&1 | tee build.log; test ${PIPESTATUS[0]} -eq 0
       - name: Only Morph's own executables are sent for signing (never the third-party engines)
